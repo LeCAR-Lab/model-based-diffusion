@@ -107,6 +107,10 @@ lqr_resp = ct.input_output_response(lqr_clsys, timepts, uvec, x0)
 U = lqr_resp.outputs[6:8]  # controller input signals
 Y = lqr_resp.outputs[0:3] + W  # noisy output signals (noise in pvtol_noisy)
 
+# save trajectory
+np.save('lqr_resp.npy', lqr_resp.outputs[:8])
+exit()
+
 # Compare to the no noise case
 uvec = [xd, ud, V * 0, W * 0]  # no noise
 lqr0_resp = ct.input_output_response(lqr_clsys, timepts, uvec, x0)
