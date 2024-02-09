@@ -76,10 +76,10 @@ set up system for estimation
 """
 
 # Disturbance and noise intensities
-Qv = np.diag([1e-2, 1e-2])*1000.0  # control noise
+Qv = np.diag([1e-2, 1e-2])  # control noise
 Qw = np.array(
     [[1e-4, 0, 1e-5], [0, 1e-4, 1e-5], [1e-5, 1e-5, 1e-4]]
-)*1000.0  # measurement noise
+)  # measurement noise
 # Initial state covariance
 P0 = np.eye(pvtol.nstates)
 # Create the time vector for the simulation
@@ -108,8 +108,8 @@ U = lqr_resp.outputs[6:8]  # controller input signals
 Y = lqr_resp.outputs[0:3] + W  # noisy output signals (noise in pvtol_noisy)
 
 # save trajectory
-np.save('lqr_resp.npy', lqr_resp.outputs[:8])
-exit()
+# np.save('lqr_resp.npy', lqr_resp.outputs[:8])
+# exit()
 
 # Compare to the no noise case
 uvec = [xd, ud, V * 0, W * 0]  # no noise
@@ -121,16 +121,16 @@ U0 = lqr0_resp.outputs[6:8]
 Y0 = lqr0_resp.outputs[0:3]
 
 # Compare the results
-plt.figure()
-plt.plot(Y0[0], Y0[1], "k--", linewidth=2, label="No disturbances")
-plt.plot(lqr0_fine.states[0], lqr0_fine.states[1], "r-", label="Actual")
-plt.plot(Y[0], Y[1], "b-", label="Noisy")
+# plt.figure()
+# plt.plot(Y0[0], Y0[1], "k--", linewidth=2, label="No disturbances")
+# plt.plot(lqr0_fine.states[0], lqr0_fine.states[1], "r-", label="Actual")
+# plt.plot(Y[0], Y[1], "b-", label="Noisy")
 
-plt.xlabel("$x$ [m]")
-plt.ylabel("$y$ [m]")
-plt.axis("equal")
-plt.legend(frameon=False)
-plt.savefig("lqr_traj_compare.png")
+# plt.xlabel("$x$ [m]")
+# plt.ylabel("$y$ [m]")
+# plt.axis("equal")
+# plt.legend(frameon=False)
+# plt.savefig("lqr_traj_compare.png")
 
 # plt.figure()
 # plot_results(timepts, lqr_resp.states, lqr_resp.outputs[6:8])
@@ -270,7 +270,6 @@ plt.savefig("kf_linear.png")
 Extended Kalman filter
 """
 
-'''
 # Define the disturbance input and measured output matrices
 F = np.array(
     [
@@ -334,15 +333,15 @@ ekf_resp = ct.input_output_response(
     [Y, np.zeros_like(Y), U],
     X0=[xe, P0.reshape(-1)],
 )
-plt.figure()
-plot_state_comparison(timepts, ekf_resp.outputs, lqr_resp.states)
-plt.savefig("ekf.png")
-'''
+# plt.figure()
+# plot_state_comparison(timepts, ekf_resp.outputs, lqr_resp.states)
+# plt.savefig("ekf.png")
 
 """
 optimization-based estimation: moving horizon estimation
 """
 
+'''
 # Define the optimal estimation problem
 traj_cost = opt.gaussian_likelihood_cost(sys, Qv, Qw)
 init_cost = lambda xhat, x: (xhat - x) @ P0 @ (xhat - x)
@@ -353,6 +352,7 @@ est = oep.compute_estimate(Y, U, X0=lqr_resp.states[:, 0])
 plt.figure()
 plot_state_comparison(timepts, est.states, lqr_resp.states, Y)
 plt.savefig("opt.png")
+'''
 
 # Plot the response of the estimator
 # plt.figure()
