@@ -94,7 +94,7 @@ class drone_Dynamics(nn.Module):
         #     [0, 0],
         #     [0, 0],
         #     [0, 0],
-        #     [1/mass*cos(theta), 0],
+        #     [1/mass*cos(theta)-0.3, 0],
         #     [-1/mass*sin(theta), 0],
         #     [0, 1/inertia]
         theta = x[..., 2:3].detach()  # Preserve the last dimension for broadcasting
@@ -106,7 +106,7 @@ class drone_Dynamics(nn.Module):
         row1 = zero2
         row2 = zero2
         row3 = zero2
-        row4 = torch.cat([c.unsqueeze(1), zero1], dim=-1)
+        row4 = torch.cat([c.unsqueeze(1) - 0.3, zero1], dim=-1)
         row5 = torch.cat([-s.unsqueeze(1), zero1], dim=-1)
         row6 = torch.cat([zero1, 1 / self.inertia * torch.ones(x.shape[:-1] + (1, 1)).cuda()], dim=-1)
         B = torch.cat([row1, row2, row3, row4, row5, row6], dim=-2)
