@@ -245,7 +245,7 @@ if __name__ == "__main__":
     dim_u = 2
     Horizon = 50
     batch = 1000
-    TimeStep = 500 # 500
+    TimeStep = 600 # 500
     dynamics_dt = torch.tensor([0.1]).cuda()
     diffusion_dt = torch.tensor([0.01]).cuda()
     # Uniform sample x and u from -1 to 1
@@ -254,7 +254,7 @@ if __name__ == "__main__":
         x_traj_diffuse[:,i,0] = 5.0 * i / Horizon
     x_traj_diffuse[:,0] = 0
     x_traj_diffuse[:,1] = 1.0
-    u_traj_diffuse =  0.5 * torch.randn(batch,Horizon-1,dim_u).cuda()
+    u_traj_diffuse =  1.0 * torch.randn(batch,Horizon-1,dim_u).cuda()
 
     x_traj_diffuse.requires_grad = True
     u_traj_diffuse.requires_grad = True
