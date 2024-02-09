@@ -39,8 +39,10 @@ def cosine_beta_schedule(timesteps, s=0.008):
 class QuadraticCostLoss(torch.nn.Module):
     def __init__(self):
         super(QuadraticCostLoss, self).__init__()
-        self.Q = torch.tensor([[1.0]]).cuda()
-        self.R = torch.tensor([[0.8]]).cuda()
+        # self.Q = torch.tensor([[1.0]]).cuda()
+        # self.R = torch.tensor([[0.8]]).cuda()
+        self.Q = torch.tensor([[0.3]]).cuda()
+        self.R = torch.tensor([[0.2]]).cuda()
 
     def forward(self, x_traj, u_traj):
         cost = torch.sum(torch.matmul(x_traj,self.Q) * x_traj) + torch.sum(torch.matmul(u_traj,self.R)*u_traj)
@@ -62,11 +64,11 @@ class FinalTargetLoss(torch.nn.Module):
         ## The final target is given, and the cost is the distance between the final state and the final target
 
         obs_center = torch.tensor([2.5,0.0]).cuda()
-        traj_xy_interval = torch.cat((x_traj[:,:,0].unsqueeze(2),x_traj[:,:,2].unsqueeze(2)),dim=2)
+        traj_xy_interval = torch.cat((x_traj[:,:,0].unsqueeze(2),x_traj[:,:,1].unsqueeze(2)),dim=2)
         obs_dist = torch.pow(torch.linalg.norm(traj_xy_interval-obs_center,dim=2),1)
         obstacle_cost = torch.mean(self.obs_layer(1.5-obs_dist))
         running_cost =  torch.mean(torch.matmul(u_traj,self.R)*u_traj)
-        return final_cost, obstacle_cost, running_cost
+        return final_cost, obstacle_cost*0.0, running_cost
 
 
 class drone_Dynamics(nn.Module):
@@ -77,7 +79,7 @@ class drone_Dynamics(nn.Module):
         parameters: [mass, inertia]
         """
         self.mass = 1.0
-        self.inertia = 0.5
+        self.inertia = 0.3
         self.A = torch.tensor([[0., 0., 0., 1., 0., 0.],
                               [0., 0., 0., 0., 1., 0.],
                               [0., 0., 0., 0., 0., 1.],
@@ -106,19 +108,19 @@ class drone_Dynamics(nn.Module):
         row1 = zero2
         row2 = zero2
         row3 = zero2
-        row4 = torch.cat([c.unsqueeze(1) - 0.3, zero1], dim=-1)
+        row4 = torch.cat([c.unsqueeze(1), zero1], dim=-1)
         row5 = torch.cat([-s.unsqueeze(1), zero1], dim=-1)
         row6 = torch.cat([zero1, 1 / self.inertia * torch.ones(x.shape[:-1] + (1, 1)).cuda()], dim=-1)
         B = torch.cat([row1, row2, row3, row4, row5, row6], dim=-2)
         return B
         
-    def delta_x(self,x ,u, dt = torch.tensor([0.1]).cuda()):
+    def delta_x(self,x ,u, dt = 0.1):
         A = self.get_A(x) # (batch, 6, 6)
         B = self.get_B(x) # (batch, 6, 2)
         dx = dt*(torch.einsum('bij,bj->bi', A, x) + torch.einsum('bij,bj->bi', B, u)) # (batch, 6)
         return dx
 
-    def gradient_dynamics(self,x,u,dt = torch.tensor([0.1]).cuda()):
+    def gradient_dynamics(self,x,u,dt = 0.1):
         A = self.get_A(x)
         B = self.get_B(x)
         return A*dt, B*dt
@@ -143,10 +145,10 @@ class mm_Dynamics(nn.Module):
                   [0., 0., 0., 0.]]).cuda()
         self.B = torch.tensor([[0., 0.], [1, 0.],
                                [0., 0.], [0., 1]]).cuda()
-    def delta_x(self,x ,u, dt = torch.tensor([0.1]).cuda()):
+    def delta_x(self,x ,u, dt =0.1):
         return dt*(torch.matmul(x, self.A.T) + torch.matmul(u, self.B.T))
 
-    def gradient_dynamics(self,x,u,dt = torch.tensor([0.1]).cuda()):
+    def gradient_dynamics(self,x,u,dt=0.1):
         grad_x = torch.zeros((x.shape[0], x.shape[1], x.shape[1])).cuda()
         grad_x = (grad_x + self.A)*dt
         grad_u = torch.zeros((u.shape[0], x.shape[1], u.shape[1])).cuda()
@@ -172,10 +174,10 @@ class LinearDynamics(nn.Module):
         self.A = A
         self.B = B
 
-    def delta_x(self, x, u, dt = torch.tensor([0.1]).cuda()):
+    def delta_x(self, x, u, dt =0.1):
         return dt*(torch.matmul(x, self.A) + torch.matmul(u, self.B))
 
-    def gradient_dynamics(self, x, u, dt = torch.tensor([0.1]).cuda()):
+    def gradient_dynamics(self, x, u, dt=0.1):
         grad_x = torch.zeros((x.shape[0], x.shape[1], x.shape[1])).cuda()
         grad_x = (grad_x + self.A)*dt
         grad_u = torch.zeros((u.shape[0], u.shape[1], u.shape[1])).cuda()
@@ -245,7 +247,7 @@ if __name__ == "__main__":
     dim_u = 2
     Horizon = 50
     batch = 1000
-    TimeStep = 600 # 500
+    TimeStep = 300 # 500
     dynamics_dt = torch.tensor([0.1]).cuda()
     diffusion_dt = torch.tensor([0.01]).cuda()
     # Uniform sample x and u from -1 to 1
@@ -285,6 +287,14 @@ if __name__ == "__main__":
     final_cstr = []
     obs_cstr = []
     dyn_ll_list = []
+    log_dict = {
+        'beta': [],
+        'noise': [],
+        'dynamic_loss': [],
+        'final_loss': [],
+        'obs_loss': [],
+        'running_loss': []
+    }
     for i in range(TimeStep):
         ## need to adjust the order of the noise seq
         # x_traj_scale = x_traj_diffuse / torch.sqrt(alpha_accum[i])
@@ -304,6 +314,12 @@ if __name__ == "__main__":
         # reward_cost.backward()
         # print epoch, dynamic loss, and reward loss
         print('beta%.3e, noise%.3e, dynamic loss:%.3e, final_loss:%.3e, obs_loss:%.3e, running_loss:%.3e'%(beta_seq[i].item(),noise_mes.item(),dyn_log_l.item(),final_cost.item(),obstacle_cost.item(),running_cost.item()))
+        log_dict['beta'].append(beta_seq[i].item())
+        log_dict['noise'].append(noise_mes.item())
+        log_dict['dynamic_loss'].append(dyn_log_l.item())
+        log_dict['final_loss'].append(final_cost.item())
+        log_dict['obs_loss'].append(obstacle_cost.item())
+        log_dict['running_loss'].append(running_cost.item())
         with torch.no_grad():
             # x_traj -= torch.randn() * x_traj.grad * torch.sqrt(noise) * 0.001
             # delta_mu_x =  -(f_seq[i] * x_traj_diffuse[:,1:] - g_seq[i] * g_seq[i] * x_traj_diffuse.grad[:,1:]) * diffusion_dt
@@ -315,11 +331,29 @@ if __name__ == "__main__":
             delta_mu_u = u_traj_diffuse.grad * beta_seq[i]
             x_traj_diffuse[:,1:] = x_traj_diffuse[:,1:] + delta_mu_x * diffusion_dt +torch.sqrt(2*beta_seq[i]*diffusion_dt/batch)*torch.randn_like(x_traj_diffuse[:,1:])
             u_traj_diffuse = u_traj_diffuse + delta_mu_u * diffusion_dt + torch.sqrt(2*beta_seq[i]*diffusion_dt/batch)* torch.randn_like(u_traj_diffuse)
-        # x_traj_save.append(x_traj_diffuse.cpu().detach().numpy())
-        # u_traj_save.append(u_traj_diffuse.cpu().detach().numpy())
-        # dyn_ll_list.append(dyn_log_l.cpu().detach().numpy())
-        # final_cstr.append(final_cost.cpu().detach().numpy())
-        # obs_cstr.append(obstacle_cost.cpu().detach().numpy())
+        # plot log dict in 6 subplots
+        if i % 20 == 0:
+            fig, axs = plt.subplots(3, 2, figsize=(15, 15))
+            axs[0, 0].plot(log_dict['beta'])
+            axs[0, 0].set_title('Beta')
+            axs[0, 1].plot(log_dict['noise'])
+            axs[0, 1].set_title('Noise')
+            axs[1, 0].plot(log_dict['dynamic_loss'])
+            axs[1, 0].set_title('Dynamic Loss')
+            axs[1, 0].set_ylim([0, 3e3])
+            axs[1, 1].plot(log_dict['final_loss'])
+            axs[1, 1].set_title('Final Loss')
+            axs[1, 1].set_ylim([0, 1.0])
+            axs[2, 0].plot(log_dict['obs_loss'])
+            axs[2, 0].set_title('Obs Loss')
+            axs[2, 1].plot(log_dict['running_loss'])
+            axs[2, 1].set_title('Running Loss')
+            plt.savefig(f'./figure/loss.png')
+        x_traj_save.append(x_traj_diffuse.cpu().detach().numpy())
+        u_traj_save.append(u_traj_diffuse.cpu().detach().numpy())
+        dyn_ll_list.append(dyn_log_l.cpu().detach().numpy())
+        final_cstr.append(final_cost.cpu().detach().numpy())
+        obs_cstr.append(obstacle_cost.cpu().detach().numpy())
         x_traj_diffuse.grad.zero_()
     x_traj_save = np.array(x_traj_save)
     u_traj_save = np.array(u_traj_save)
@@ -328,12 +362,11 @@ if __name__ == "__main__":
     obs_cstr = np.array(obs_cstr )* 180000
 
     # save as npz
-    # np.savez('./figure/diffuse_traj.npz',x_traj_save = x_traj_save, u_traj_save = u_traj_save, dyn_ll_list = dyn_ll_list, final_cstr = final_cstr, obs_cstr = obs_cstr)
+    np.savez('diffuse_traj.npz',x_traj_save = x_traj_save, u_traj_save = u_traj_save, dyn_ll_list = dyn_ll_list, final_cstr = final_cstr, obs_cstr = obs_cstr)
 
     plt.figure()
     for i in range(100):
-        plt.plot(x_traj_diffuse[i,:,0].cpu().detach().numpy(),x_traj_diffuse[i,:,2].cpu().detach().numpy())
-
+        plt.plot(x_traj_diffuse[i,:,0].cpu().detach().numpy(),x_traj_diffuse[i,:,1].cpu().detach().numpy())
         plt.title('Final Trajectory distribution')
     circle = plt.Circle((2.5,0),1.2)
     plt.gca().add_patch(circle)

@@ -184,7 +184,7 @@ if __name__ == "__main__":
         x_traj_diffuse[:,i,0] = 5.0 * i / Horizon
     x_traj_diffuse[:,0] = 0
     x_traj_diffuse[:,1] = 1.0
-    u_traj_diffuse =  0.5 * torch.randn(batch,Horizon-1,dim_u).cuda()
+    u_traj_diffuse = 0.5 * torch.randn(batch,Horizon-1,dim_u).cuda()
     x_traj_diffuse.requires_grad = True
     u_traj_diffuse.requires_grad = True
 
@@ -254,6 +254,9 @@ if __name__ == "__main__":
     dyn_ll_list = np.array(dyn_ll_list)
     final_cstr = np.array(final_cstr * 50000)
     obs_cstr = np.array(obs_cstr * 180000)
+
+    # save the trajectory
+
 
     plt.figure()
     for i in range(100):
