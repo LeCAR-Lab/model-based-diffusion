@@ -311,6 +311,7 @@ if __name__ == "__main__":
         final_cost,obstacle_cost,running_cost = r_cost(x_traj_scale[:,1:],u_traj_scale)
         loss = -dyn_log_l #- 50000*final_cost-180000*obstacle_cost-100*running_cost
         loss.backward()
+        # print(ç
         # reward_cost.backward()
         # print epoch, dynamic loss, and reward loss
         print('beta%.3e, noise%.3e, dynamic loss:%.3e, final_loss:%.3e, obs_loss:%.3e, running_loss:%.3e'%(beta_seq[i].item(),noise_mes.item(),dyn_log_l.item(),final_cost.item(),obstacle_cost.item(),running_cost.item()))

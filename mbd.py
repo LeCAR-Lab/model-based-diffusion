@@ -4,6 +4,7 @@ from jax import lax
 from jax import numpy as jnp
 from flax import struct
 from functools import partial
+import matplotlib.pyplot as plt
 
 
 @struct.dataclass
@@ -65,6 +66,7 @@ def get_reward(
     dist2goal_normed = dist2goal / mdb_params.noise_std**2
     return -jnp.sum(dist2goal_normed)
 
+
 def get_logp_dynamics(
     x_traj: jnp.ndarray,
     u_traj: jnp.ndarray,
@@ -72,24 +74,27 @@ def get_logp_dynamics(
     env_params: EnvParams,
 ) -> jnp.ndarray:
     # tau: (n_step, n_dim)
-    x_hat = x_traj[0]
+    x_hat_traj = jnp.zeros_like(x_traj)
+    x_hat_traj = x_hat_traj.at[0].set(x_traj[0])
     cov_hat = jnp.eye(6) * 0.0
     logp_dynamics = 0.0
+
     for t in range(1, 50):
         # parse state and action
         u_prev = u_traj[t - 1]
         # get state prediction
-        A = get_A(x_hat, env_params)  # NOTE: A is discrete time
-        B = get_B(x_hat, env_params)
+        A = get_A(x_hat_traj[t-1], env_params)  # NOTE: A is discrete time
+        B = get_B(x_hat_traj[t-1], env_params)
         Q = B @ B.T * mdb_params.noise_std**2
         R = jnp.eye(6) * mdb_params.noise_std**2
-        x_pred = A @ x_hat + B @ u_prev
+        x_pred = A @ x_hat_traj[t-1] + B @ u_prev
         # get prediction covariance
         cov_pred = A @ cov_hat @ A.T + Q
         # get optimal prediction feedback matrix
         K = cov_pred @ jnp.linalg.inv(cov_pred + R)
         # update state and covariance
         x_hat = x_pred + K @ (x_traj[t] - x_pred)
+        x_hat_traj = x_hat_traj.at[t].set(x_hat)
         cov_hat = (jnp.eye(6) - K) @ cov_pred
         # update logp_dynamics
         y_cov_pred = (
@@ -100,7 +105,8 @@ def get_logp_dynamics(
             + jnp.linalg.slogdet(y_cov_pred)[1]
             + (x_traj[t] - x_pred).T @ jnp.linalg.inv(y_cov_pred) @ (x_traj[t] - x_pred)
         )
-    return logp_dynamics
+
+    return logp_dynamics #, x_traj_filtered
 
 
 def get_logp_dynamics_scan(x_traj, u_traj, mdb_params, env_params):
@@ -130,9 +136,8 @@ def get_logp_dynamics_scan(x_traj, u_traj, mdb_params, env_params):
     initial_state = (x_hat, cov_hat, logp_dynamics)
 
     inputs = (u_traj, x_traj)
-    final_state, _ = lax.scan(step, initial_state, inputs)
-    return final_state[2]  # Return only the logp_dynamics component of the final state
-
+    (x_hat, cov_hat, logp_dynamics), _ = lax.scan(step, initial_state, inputs)
+    return logp_dynamics # Return only the logp_dynamics component of the final state
 
 def get_next_traj(
     x_traj: jnp.ndarray,
@@ -141,19 +146,41 @@ def get_next_traj(
     env_params: EnvParams,
     rng: chex.PRNGKey,
 ) -> jnp.ndarray:
-    reward_grad = jax.grad(get_reward, argnums=[0, 1])
-    logp_dynamics_grad = jax.grad(get_logp_dynamics, argnums=[0, 1])
-    # get reward and logp_dynamics
-    reward_grad_x, reward_grad_u = reward_grad(x_traj, u_traj, mdb_params, env_params)
-    logp_dynamics_grad_x, logp_dynamics_grad_u = logp_dynamics_grad(
-        x_traj, u_traj, mdb_params, env_params
+    def get_reward_wo_x0(x0, x_traj_future, u_traj, mdb_params, env_params):
+        x_traj = jnp.concatenate([x0[None], x_traj_future], axis=0)
+        return get_reward(x_traj, u_traj, mdb_params, env_params)
+    reward_grad = jax.grad(get_reward_wo_x0, argnums=[1, 2])
+    reward_grad_x_future, reward_grad_u = reward_grad(x_traj[0], x_traj[1:], u_traj, mdb_params, env_params)
+    reward_grad_x = jnp.concatenate(
+        [jnp.zeros((1, 6)), reward_grad_x_future], axis=0
     )
-    grad_x = reward_grad_x + logp_dynamics_grad_x
-    grad_u = reward_grad_u + logp_dynamics_grad_u
-    jax.debug.print('grad_x_norm = {x}, grad_u_norm = {y}', x=jnp.linalg.norm(grad_x), y=jnp.linalg.norm(grad_u))
+
+    def get_logp_wo_x0(x0, x_traj_future, u_traj, mdb_params, env_params):
+        x_traj = jnp.concatenate([x0[None], x_traj_future], axis=0)
+        return get_logp_dynamics_scan(x_traj, u_traj, mdb_params, env_params)
+    logp_dynamics_grad = jax.grad(get_logp_wo_x0, argnums=[1, 2])
+    # get reward and logp_dynamics
+    logp_dynamics_grad_x_future, logp_dynamics_grad_u = logp_dynamics_grad(
+        x_traj[0], x_traj[1:], u_traj, mdb_params, env_params
+    )
+    logp_dynamics_grad_x = jnp.concatenate(
+        [jnp.zeros((1, 6)), logp_dynamics_grad_x_future], axis=0
+    )
+
+
+    grad_x = logp_dynamics_grad_x + reward_grad_x * 3e-2
+
+    # jax.debug.print('{x}', x = grad_x[1:])
+    # exit()
+
+    grad_u = logp_dynamics_grad_u + reward_grad_u
+
+    # jax.debug.print(
+    #     "dynamic likelihood gradient norm = {x}",
+    #     x=jnp.linalg.norm(grad_x),
+    # )
     # get new trajectory with Langevin dynamics
     eps = mdb_params.langevin_eps
-    # jax.debug.print("grad = {x}", x=eps * grad_x)
     rng, rng_x, rng_u = jax.random.split(rng, 3)
     x_traj_new = (
         x_traj
@@ -169,6 +196,23 @@ def get_next_traj(
 
     return x_traj_new, u_traj_new
 
+def plot_traj(x_traj: jnp.ndarray, u_traj: jnp.ndarray, filename: str = "traj"):
+    # create two subplots
+    fig, (ax1, ax2) = plt.subplots(2, 1)
+    ax1.quiver(
+        x_traj[:, 0],
+        x_traj[:, 1],
+        -jnp.sin(x_traj[:, 2]),
+        jnp.cos(x_traj[:, 2]),
+        range(len(x_traj)),
+        cmap="Reds",
+    )
+    ax1.grid()
+    ax1.set_xlim([-1.5, 1.5])
+    ax1.set_ylim([-1.5, 1.5])
+    ax1.set_aspect('equal', adjustable='box')
+    # ax2.plot(u_traj)
+    plt.savefig(f"figure/{filename}.png")
 
 def main():
     # check NaN with jax
@@ -176,17 +220,16 @@ def main():
     rng = jax.random.PRNGKey(0)
 
     # schedule noise here
-    noise_std_init = 1.0
+    noise_std_init = 5e-3 #1.0
     noise_std_final = 5e-3
     diffuse_step = 1
-    diffuse_substeps = 100
-    noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
-    langevin_eps_schedule = jnp.linspace(1.0, 1e-3, diffuse_step)
-    # noise_std_schedule = jnp.linspace(noise_std_init, noise_std_final, diffuse_step)
+    diffuse_substeps = 60
+    # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
+    langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_step) * 1e-5
+    noise_std_schedule = jnp.linspace(noise_std_init, noise_std_final, diffuse_step)
     # noise_var_schedule = noise_std_schedule**2
     # noise_var_diff = -jnp.diff(noise_var_schedule, append=0.0)
     # langevin_eps_schedule = jnp.sqrt(noise_var_diff/diffuse_substeps)
-
 
     # init env and mbd params
     env_params = EnvParams()
@@ -195,10 +238,38 @@ def main():
     # init trajectory
     rng, rng_x, rng_u = jax.random.split(rng, 3)
     x_traj = jax.random.normal(rng_x, (env_params.horizon, env_params.n_state))
-    x_traj.at[0].set(env_params.init_state)
     u_traj = jax.random.normal(rng_u, (env_params.horizon, env_params.n_action))
+    x_traj = x_traj.at[0].set(env_params.init_state)
 
-    # jax.debug.print('logp dynamics = {x}', x = get_logp_dynamics(x_traj, u_traj, mdb_params, env_params))
+    # test kalman filter
+    # # generate feasible initial trajectory
+    # x_traj_real = jnp.zeros((env_params.horizon, env_params.n_state))
+    # u_traj_real = jax.random.normal(rng_u, (env_params.horizon, env_params.n_action))
+    # x_traj_real = x_traj_real.at[0].set(env_params.init_state)
+    # for t in range(1, env_params.horizon):
+    #     x_traj_real = x_traj_real.at[t].set(
+    #         get_A(x_traj_real[t-1], env_params) @ x_traj_real[t-1]
+    #         + get_B(x_traj_real[t-1], env_params) @ u_traj_real[t-1]
+    #     )
+    # # plot the trajectory
+    # plot_traj(x_traj_real, "init_traj")
+
+    # # add noise to the initial trajectory
+    # x_traj = x_traj_real + jax.random.normal(rng_x, x_traj_real.shape) * 1.0
+    # x_traj = x_traj.at[0].set(env_params.init_state)
+    # u_traj = u_traj_real + jax.random.normal(rng_u, u_traj_real.shape) * 1.0
+    # # use kalman filter to estimate the initial state
+    # mdb_params = mdb_params.replace(
+    #     noise_std=1.0,
+    # )
+    # logp_dynamics, x_traj_filtered = get_logp_dynamics(x_traj, u_traj, mdb_params, env_params)
+    # # plot the trajectory
+    # plot_traj(x_traj_filtered, "init_traj_filtered")
+    # plot_traj(x_traj, "init_traj_noisy")
+    # jax.debug.print('logp_dynamics = {x}', x=logp_dynamics)
+    # jax.debug.print('grad logp_dynamics = {x}', x=jax.grad(get_logp_dynamics_scan, argnums=[0])(x_traj, u_traj, mdb_params, env_params))
+    # exit()
+
 
     # run MBD
     x_traj_save = []
@@ -212,7 +283,7 @@ def main():
                 langevin_eps=langevin_eps_schedule[substep],
             )
             x_traj, u_traj = get_next_traj(x_traj, u_traj, mdb_params, env_params, rng)
-            # jax.debug.print("x_traj = {x}", x=x_traj)
+            plot_traj(x_traj, u_traj, f"traj_{d_step}_{substep}")
         # save trajectory
         x_traj_save.append(x_traj)
 

@@ -164,3 +164,4 @@ cython_debug/
 *.jpeg
 *.npy
 *.npz
+*.mp4
