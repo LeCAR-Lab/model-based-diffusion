@@ -208,22 +208,14 @@ def get_next_traj(
 def plot_traj(x_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "traj"):
     # create two subplots
     fig, ax1 = plt.subplots(1, 1)
-    ax1.quiver(
+    # plot trajectory as scatter
+    ax1.scatter(
         x_traj[:, 0],
         x_traj[:, 1],
-        -jnp.sin(x_traj[:, 2]),
-        jnp.cos(x_traj[:, 2]),
-        range(len(x_traj)),
+        c=range(len(x_traj)),
         cmap="Reds",
     )
-    ax1.quiver(
-        x_traj_real[:, 0],
-        x_traj_real[:, 1],
-        -jnp.sin(x_traj_real[:, 2]),
-        jnp.cos(x_traj_real[:, 2]),
-        range(len(x_traj_real)),
-        cmap="Blues",
-    )
+    ax1.plot(x_traj_real[:, 0], x_traj_real[:, 1], "b--", label="real trajectory")
     ax1.grid()
     ax1.set_xlim([-1.5, 1.5])
     ax1.set_ylim([-1.5, 1.5])
@@ -233,18 +225,18 @@ def plot_traj(x_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "tr
     # release the plot
     plt.close(fig)
 
-    # plot x, y, theta
-    fig, ax2 = plt.subplots(1, 1)
-    ax2.plot(x_traj[:, 0], "r", label="x")
-    ax2.plot(x_traj[:, 1], "g", label="y")
-    ax2.plot(x_traj[:, 2], "b", label="theta")
-    ax2.plot(x_traj_real[:, 0], "r--", label="x_real")
-    ax2.plot(x_traj_real[:, 1], "g--", label="y_real")
-    ax2.plot(x_traj_real[:, 2], "b--", label="theta_real")
-    ax2.legend()
-    plt.savefig(f"figure/{filename}_xytheta.png")
-    # release the plot
-    plt.close(fig)
+    # # plot x, y, theta
+    # fig, ax2 = plt.subplots(1, 1)
+    # ax2.plot(x_traj[:, 0], "r", label="x")
+    # ax2.plot(x_traj[:, 1], "g", label="y")
+    # ax2.plot(x_traj[:, 2], "b", label="theta")
+    # ax2.plot(x_traj_real[:, 0], "r--", label="x_real")
+    # ax2.plot(x_traj_real[:, 1], "g--", label="y_real")
+    # ax2.plot(x_traj_real[:, 2], "b--", label="theta_real")
+    # ax2.legend()
+    # plt.savefig(f"figure/{filename}_xytheta.png")
+    # # release the plot
+    # plt.close(fig)
 
 
 def main():
@@ -256,7 +248,7 @@ def main():
     noise_std_init = 5e-3  # 1.0
     noise_std_final = 5e-3
     diffuse_step = 1
-    diffuse_substeps = 20
+    diffuse_substeps = 100
     # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
     # langevin_eps_schedule_early = jnp.linspace(1.0, 0.5, diffuse_step // 2) * 1e-5
     # langevin_eps_schedule_late = (

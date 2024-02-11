@@ -149,17 +149,17 @@ def get_next_traj(
     env_params: EnvParams,
     rng: chex.PRNGKey,
 ) -> jnp.ndarray:
-    # def get_reward_wo_x0(x0, x_traj_future, u_traj, mdb_params, env_params):
-    #     x_traj = jnp.concatenate([x0[None], x_traj_future], axis=0)
-    #     return get_reward(x_traj, u_traj, mdb_params, env_params)
+    def get_reward_wo_x0(x0, x_traj_future, u_traj, mdb_params, env_params):
+        x_traj = jnp.concatenate([x0[None], x_traj_future], axis=0)
+        return get_reward(x_traj, u_traj, mdb_params, env_params)
 
-    # reward_grad = jax.grad(get_reward_wo_x0, argnums=[1, 2])
-    # reward_grad_x_future, reward_grad_u = reward_grad(
-    #     x_traj[0], x_traj[1:], u_traj, mdb_params, env_params
-    # )
-    # reward_grad_x = jnp.concatenate([jnp.zeros((1, n_state)), reward_grad_x_future], axis=0)
-    reward_grad_x = jnp.zeros([horizon, n_state])
-    reward_grad_u = jnp.zeros([horizon, n_action])
+    reward_grad = jax.grad(get_reward_wo_x0, argnums=[1, 2])
+    reward_grad_x_future, reward_grad_u = reward_grad(
+        x_traj[0], x_traj[1:], u_traj, mdb_params, env_params
+    )
+    reward_grad_x = jnp.concatenate([jnp.zeros((1, n_state)), reward_grad_x_future], axis=0)
+    # reward_grad_x = jnp.zeros([horizon, n_state])
+    # reward_grad_u = jnp.zeros([horizon, n_action])
 
     def get_logp_wo_x0(x0, x_traj_future, u_traj, mdb_params, env_params):
         x_traj = jnp.concatenate([x0[None], x_traj_future], axis=0)
@@ -193,7 +193,7 @@ def get_next_traj(
         + eps * grad_x
         + jnp.sqrt(2 * eps) * jax.random.normal(rng_x, grad_x.shape)
     )
-    x_traj_new.at[0].set(env_params.init_state)
+    x_traj_new = x_traj_new.at[0].set(env_params.init_state) # NOTE: do not add noise to the initial state
     u_traj_new = (
         u_traj
         + eps * grad_u
@@ -213,6 +213,12 @@ def plot_traj(x_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "tr
         jnp.cos(x_traj[:, 2]),
         range(len(x_traj)),
         cmap="Reds",
+    )
+    ax1.plot(
+        x_traj[:, 0],
+        x_traj[:, 1],
+        "r",
+        alpha=0.2,
     )
     ax1.plot(
         x_traj_real[:, 0],
@@ -236,6 +242,9 @@ def plot_traj(x_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "tr
     ax2.plot(x_traj_real[:, 0], "r--", label="x_real")
     ax2.plot(x_traj_real[:, 1], "g--", label="y_real")
     ax2.plot(x_traj_real[:, 2], "b--", label="theta_real")
+    ax2.grid()
+    ax2.set_xlim([0, horizon])
+    ax2.set_ylim([-1.5, 1.5])
     ax2.legend()
     plt.savefig(f"figure/{filename}_xytheta.png")
     # release the plot
@@ -248,12 +257,12 @@ def main():
     rng = jax.random.PRNGKey(0)
 
     # schedule noise here
-    noise_std_init = 0.1
+    noise_std_init = 5e-3 #0.1
     noise_std_final = 5e-3
-    diffuse_step = 3
+    diffuse_step = 6
     diffuse_substeps = 5
     # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
-    langevin_eps_schedule = jnp.linspace(1.0, 1e-1, diffuse_step) * 1e-5 * 2.0  # 1e-5
+    langevin_eps_schedule = jnp.linspace(1.0, 1e-2, diffuse_step) * 1e-5 * 2.0  # 1e-5
     # plan in exponential space
     noise_std_schedule = jnp.exp(
         jnp.linspace(jnp.log(noise_std_init), jnp.log(noise_std_final), diffuse_step)
@@ -311,7 +320,7 @@ def main():
         for substep in range(diffuse_substeps):
             mdb_params = mdb_params.replace(
                 langevin_eps=langevin_eps_schedule[substep]
-                * (mdb_params.noise_std / noise_std_final) ** 2
+                * (mdb_params.noise_std / 5e-3) ** 2
             )
             rng, rng_traj = jax.random.split(rng)
             x_traj, u_traj = get_next_traj_jit(
@@ -336,7 +345,7 @@ def main():
                     get_A(x_traj_real[t - 1], env_params) @ x_traj_real[t - 1]
                     + get_B(x_traj_real[t - 1], env_params) @ u_traj[t - 1]
                 )
-            plot_traj(x_traj, x_traj_real, f"traj_{d_step}_{substep}")
+            plot_traj(x_traj, x_traj_real, f"traj_{d_step*diffuse_substeps+substep}")
         # save trajectory
         x_traj_save.append(x_traj)
 
