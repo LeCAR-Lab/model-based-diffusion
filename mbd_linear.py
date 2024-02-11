@@ -7,7 +7,7 @@ from functools import partial
 import matplotlib.pyplot as plt
 
 # global static parameters
-n_state: int = 6
+n_state: int = 4
 n_action: int = 2
 horizon: int = 50
 
@@ -24,19 +24,17 @@ class EnvParams:
     dt: float = 0.1
     mass: float = 1.0
     inertia: float = 1.0
-    init_state: jnp.ndarray = jnp.array([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
-    goal_state: jnp.ndarray = jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    init_state: jnp.ndarray = jnp.array([-1.0, 0.0, 0.0, 0.0])
+    goal_state: jnp.ndarray = jnp.array([1.0, 0.0, 0.0, 0.0])
 
 
 def get_A(x: jnp.ndarray, env_params: EnvParams) -> jnp.ndarray:
     return jnp.array(
         [
-            [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 0.0],
+            [0.0, 0.0, 0.0, 0.0],
         ]
     ) * env_params.dt + jnp.eye(n_state)
 
@@ -48,10 +46,8 @@ def get_B(x: jnp.ndarray, env_params: EnvParams) -> jnp.ndarray:
             [
                 [0.0, 0.0],
                 [0.0, 0.0],
-                [0.0, 0.0],
-                [1.0 / env_params.mass * jnp.cos(theta), 0.0],
-                [0.0, -1.0 / env_params.mass * jnp.sin(theta)],
-                [0.0, 1.0 / env_params.inertia],
+                [1.0, 0.0],
+                [0.0, 1.0],
             ]
         )
         * env_params.dt
@@ -64,9 +60,15 @@ def get_reward(
     mdb_params: MBDParams,
     env_params: EnvParams,
 ) -> jnp.ndarray:
-    dist2goal = ((x_traj[:, :2] - env_params.goal_state[:2]) ** 2).sum(axis=1)
-    dist2goal_normed = dist2goal / (mdb_params.noise_std**2)
-    return -jnp.sum(dist2goal_normed) - dist2goal_normed[-1]  # extra final cost
+    # dist2goal = ((x_traj[:, :2] - env_params.goal_state[:2]) ** 2).sum(axis=1)
+    # dist2goal_normed = dist2goal / (mdb_params.noise_std**2)
+    # return -jnp.sum(dist2goal_normed) - dist2goal_normed[-1]  # extra final cost
+    Q = 0.3
+    R = 0.2
+    traj_cost = jnp.sum(Q * (x_traj - env_params.goal_state) ** 2) * 1e2
+    ctrl_cost = jnp.sum(R * u_traj ** 2) * 1e2
+    final_cost = 5.0e4 * (jnp.sum((x_traj[-1] - env_params.goal_state) ** 2))
+    return -(traj_cost + ctrl_cost + final_cost)
 
 
 def get_logp_dynamics(
@@ -214,10 +216,13 @@ def plot_traj(x_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "tr
         range(len(x_traj)),
         cmap="Reds",
     )
-    ax1.plot(
+    ax1.quiver(
         x_traj_real[:, 0],
         x_traj_real[:, 1],
-        "b--",
+        -jnp.sin(x_traj_real[:, 2]),
+        jnp.cos(x_traj_real[:, 2]),
+        range(len(x_traj_real)),
+        cmap="Blues",
     )
     ax1.grid()
     ax1.set_xlim([-1.5, 1.5])
@@ -248,16 +253,20 @@ def main():
     rng = jax.random.PRNGKey(0)
 
     # schedule noise here
-    noise_std_init = 0.1
+    noise_std_init = 5e-3  # 1.0
     noise_std_final = 5e-3
-    diffuse_step = 3
-    diffuse_substeps = 5
+    diffuse_step = 1
+    diffuse_substeps = 20
     # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
-    langevin_eps_schedule = jnp.linspace(1.0, 1e-1, diffuse_step) * 1e-5 * 2.0  # 1e-5
-    # plan in exponential space
-    noise_std_schedule = jnp.exp(
-        jnp.linspace(jnp.log(noise_std_init), jnp.log(noise_std_final), diffuse_step)
-    )
+    # langevin_eps_schedule_early = jnp.linspace(1.0, 0.5, diffuse_step // 2) * 1e-5
+    # langevin_eps_schedule_late = (
+    #     jnp.linspace(0.5, 2e-5, diffuse_step - diffuse_step // 2) * 1e-5
+    # )
+    # langevin_eps_schedule = jnp.concatenate(
+    #     [langevin_eps_schedule_early, langevin_eps_schedule_late]
+    # )
+    langevin_eps_schedule = jnp.ones(diffuse_substeps) * 1e-5
+    noise_std_schedule = jnp.linspace(noise_std_init, noise_std_final, diffuse_step)
     # noise_var_schedule = noise_std_schedule**2
     # noise_var_diff = -jnp.diff(noise_var_schedule, append=0.0)
     # langevin_eps_schedule = jnp.sqrt(noise_var_diff/diffuse_substeps)
@@ -309,10 +318,7 @@ def main():
             noise_std=noise_std_schedule[d_step],
         )
         for substep in range(diffuse_substeps):
-            mdb_params = mdb_params.replace(
-                langevin_eps=langevin_eps_schedule[substep]
-                * (mdb_params.noise_std / noise_std_final) ** 2
-            )
+            mdb_params = mdb_params.replace(langevin_eps=langevin_eps_schedule[substep])
             rng, rng_traj = jax.random.split(rng)
             x_traj, u_traj = get_next_traj_jit(
                 x_traj, u_traj, mdb_params, env_params, rng_traj
