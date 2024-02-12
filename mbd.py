@@ -23,8 +23,8 @@ class MBDParams:
 @struct.dataclass
 class EnvParams:
     dt: float = 0.1
-    mass: float = 0.3
-    inertia: float = 0.5
+    mass: float = 1.0
+    inertia: float = 1.0
     init_state: jnp.ndarray = jnp.array([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     goal_state: jnp.ndarray = jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
@@ -34,7 +34,8 @@ def get_A(x: jnp.ndarray, env_params: EnvParams) -> jnp.ndarray:
         [
             [0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
-            [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            # [0.0, 0.0, 0.0, 0.0, 0.0, 1.0],
+            [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
             [0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
@@ -50,9 +51,12 @@ def get_B(x: jnp.ndarray, env_params: EnvParams) -> jnp.ndarray:
                 [0.0, 0.0],
                 [0.0, 0.0],
                 [0.0, 0.0],
-                [1.0 / env_params.mass * jnp.cos(theta), 0.0],
-                [0.0, -1.0 / env_params.mass * jnp.sin(theta)],
-                [0.0, 1.0 / env_params.inertia],
+                # [1.0 / env_params.mass * jnp.cos(theta), 0.0],
+                # [-1.0 / env_params.mass * jnp.sin(theta), 0.0],
+                # [0.0, 1.0 / env_params.inertia],
+                [1.0, 0.0],
+                [0.0, 1.0],
+                [0.0, 0.0],
             ]
         )
         * env_params.dt
@@ -65,13 +69,26 @@ def get_reward(
     mdb_params: MBDParams,
     env_params: EnvParams,
 ) -> jnp.ndarray:
-    dist_rew = 1.0 - jnp.clip(((x_traj[:, :2] - env_params.goal_state[:2]) ** 2).sum(axis=1), 0.0, 5.0)/5.0
+    dist_rew = (
+        1.0
+        - jnp.clip(
+            ((x_traj[:, :2] - env_params.goal_state[:2]) ** 2).sum(axis=1), 0.0, 5.0
+        )
+        / 5.0
+    )
     dist2center = ((x_traj[:, :2] - jnp.array([0.0, 0.0])) ** 2).sum(axis=1)
-    obs_rew = jnp.clip((dist2center - 0.2)/0.1, -2.0, 1.0)
-    final_rew = 1.0 - jnp.clip(((x_traj[-1, :3] - env_params.goal_state[:3]) ** 2).sum(), 0.0, 5.0)/5.0
-    u_rew = 1.0 - jnp.clip((u_traj ** 2).sum(axis=1), 0.0, 1.0)
+    obs_rew = jnp.clip((dist2center - 0.2) / 0.1, -2.0, 1.0)
+    final_rew = (
+        1.0
+        - jnp.clip(((x_traj[-1, :2] - env_params.goal_state[:2]) ** 2).sum(), 0.0, 5.0)
+        / 5.0
+    )
+    u_rew = 1.0 - jnp.clip((u_traj**2).sum(axis=1), 0.0, 1.0)
     # dist2goal_normed = dist2goal / (mdb_params.noise_std**2)
-    return (dist_rew.sum() + u_rew.sum()*0.1)/(mdb_params.noise_std)*final_rew #+ obs_rew.sum()*10.0
+    return (dist_rew.sum() + u_rew.sum() * 0.1 + obs_rew.sum() * 3.0)
+# / (
+#         mdb_params.noise_std
+    # )  # + obs_rew.sum()*10.0
 
 
 def get_logp_dynamics(
@@ -162,7 +179,9 @@ def get_next_traj(
     reward_grad_x_future, reward_grad_u = reward_grad(
         x_traj[0], x_traj[1:], u_traj, mdb_params, env_params
     )
-    reward_grad_x = jnp.concatenate([jnp.zeros((1, n_state)), reward_grad_x_future], axis=0)
+    reward_grad_x = jnp.concatenate(
+        [jnp.zeros((1, n_state)), reward_grad_x_future], axis=0
+    )
     # reward_grad_x = jnp.zeros([horizon, n_state])
     # reward_grad_u = jnp.zeros([horizon, n_action])
 
@@ -179,8 +198,8 @@ def get_next_traj(
         [jnp.zeros((1, n_state)), logp_dynamics_grad_x_future], axis=0
     )
 
-    # reward_scale = jnp.linalg.norm(logp_dynamics_grad_x) / jnp.linalg.norm(reward_grad_x) 
-    reward_scale = 1.0
+    # reward_scale = jnp.linalg.norm(logp_dynamics_grad_x) / jnp.linalg.norm(reward_grad_x)
+    reward_scale = 10.0
     grad_x = logp_dynamics_grad_x + reward_grad_x * reward_scale
 
     # exit()
@@ -201,7 +220,9 @@ def get_next_traj(
         + eps * grad_x
         + jnp.sqrt(2 * eps) * jax.random.normal(rng_x, grad_x.shape)
     )
-    x_traj_new = x_traj_new.at[0].set(env_params.init_state) # NOTE: do not add noise to the initial state
+    x_traj_new = x_traj_new.at[0].set(
+        env_params.init_state
+    )  # NOTE: do not add noise to the initial state
     u_traj_new = (
         u_traj
         + eps * grad_u
@@ -211,9 +232,14 @@ def get_next_traj(
     return x_traj_new, u_traj_new
 
 
-def plot_traj(x_traj: jnp.ndarray, u_traj: jnp.ndarray, x_traj_real: jnp.ndarray, filename: str = "traj"):
+def plot_traj(
+    x_traj: jnp.ndarray,
+    u_traj: jnp.ndarray,
+    x_traj_real: jnp.ndarray,
+    filename: str = "traj",
+):
     # create two subplots
-    fig, ax1 = plt.subplots(1, 1)
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 6))
     ax1.quiver(
         x_traj[:, 0],
         x_traj[:, 1],
@@ -239,20 +265,17 @@ def plot_traj(x_traj: jnp.ndarray, u_traj: jnp.ndarray, x_traj_real: jnp.ndarray
     ax1.set_aspect("equal", adjustable="box")
     # plot star at [1, 0]
     ax1.plot(1.0, 0.0, "r*", markersize=16)
-    # # plot circle at [0, 0]
-    # circle = plt.Circle((0, 0), 0.2, color="black", fill=False)
-    # ax1.add_artist(circle)
-    # # plot circle with dash line
-    # circle = plt.Circle((0, 0), 0.3, color="black", fill=False, linestyle="--")
-    # ax1.add_artist(circle)
-    # ax2.plot(u_traj)
-    plt.savefig(f"figure/{filename}.png")
-    plt.savefig(f"figure/traj.png")
-    # release the plot
-    plt.close(fig)
+    # set title
+    ax1.set_title("Trajectory")
+    # plot circle at [0, 0]
+    circle = plt.Circle((0, 0), 0.2, color="black", fill=False)
+    ax1.add_artist(circle)
+    # plot circle with dash line
+    circle = plt.Circle((0, 0), 0.3, color="black", fill=False, linestyle="--")
+    ax1.add_artist(circle)
 
     # plot x, y, theta
-    fig, ax2 = plt.subplots(1, 1)
+    # fig, ax2 = plt.subplots(1, 1)
     ax2.plot(x_traj[:, 0], "r", label="x")
     ax2.plot(x_traj[:, 1], "g", label="y")
     ax2.plot(x_traj[:, 2], "b", label="theta")
@@ -262,33 +285,41 @@ def plot_traj(x_traj: jnp.ndarray, u_traj: jnp.ndarray, x_traj_real: jnp.ndarray
     ax2.grid()
     ax2.set_xlim([0, horizon])
     ax2.set_ylim([-1.5, 1.5])
-    ax2.legend(loc="center left", bbox_to_anchor=(1, 0.5))
-    plt.savefig(f"figure/{filename}_xytheta.png")
-    # release the plot
-    plt.close(fig)
+    ax2.legend(loc="upper left")
+    ax2.set_title("State")
+    # plt.savefig(f"figure/{filename}_xytheta.png")
+    # # release the plot
+    # plt.close(fig)
 
     # plot T, tau
-    fig, ax3 = plt.subplots(1, 1)
+    # fig, ax3 = plt.subplots(1, 1)
     ax3.plot(u_traj[:, 0], "c", label="$T$")
     ax3.plot(u_traj[:, 1], "m", label="$tau$")
     ax3.grid()
     ax3.set_xlim([0, horizon])
     ax3.set_ylim([-2.0, 2.0])
-    ax3.legend(loc="center left", bbox_to_anchor=(1, 0.5))
-    plt.savefig(f"figure/{filename}_u.png")
+    ax3.legend(loc="upper left")
+    ax3.set_title("Control")
+    # plt.savefig(f"figure/{filename}_u.png")
+    # # release the plot
+    # plt.close(fig)
+
+    plt.savefig(f"figure/{filename}.png")
+    plt.savefig(f"figure/traj.png")
     # release the plot
     plt.close(fig)
 
+
 def main():
     # check NaN with jax
-    jax.config.update("jax_debug_nans", True)
+    # jax.config.update("jax_debug_nans", True)
     rng = jax.random.PRNGKey(0)
 
     # schedule noise here
     noise_std_init = 0.2
     noise_std_final = 5e-3
-    diffuse_step = 5
-    diffuse_substeps = 10
+    diffuse_step = 10
+    diffuse_substeps = 20
     # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
     langevin_eps_schedule = jnp.linspace(1.0, 1e-1, diffuse_step) * 1e-5  # 1e-5
     # plan in exponential space
@@ -373,7 +404,9 @@ def main():
                     get_A(x_traj_real[t - 1], env_params) @ x_traj_real[t - 1]
                     + get_B(x_traj_real[t - 1], env_params) @ u_traj[t - 1]
                 )
-            plot_traj(x_traj, u_traj, x_traj_real, f"traj_{d_step*diffuse_substeps+substep}")
+            plot_traj(
+                x_traj, u_traj, x_traj_real, f"traj_{d_step*diffuse_substeps+substep}"
+            )
         # save trajectory
         x_traj_save.append(x_traj)
 
