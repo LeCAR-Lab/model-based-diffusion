@@ -10,8 +10,8 @@ import matplotlib.pyplot as plt
 n_state: int = 6
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 10  # 10 #10
-diffuse_substeps = 5  # 10
+diffuse_step = 20  # 10 #10
+diffuse_substeps = 16  # 10
 
 
 @struct.dataclass
@@ -27,7 +27,7 @@ class EnvParams:
     dt: float = 0.1
     mass: float = 1.0
     inertia: float = 0.3
-    init_state: jnp.ndarray = jnp.array([-1.0, 0.0, jnp.pi / 2, 0.0, 0.0, 0.0])
+    init_state: jnp.ndarray = jnp.array([-1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
     goal_state: jnp.ndarray = jnp.array([1.0, 0.0, 0.0, 0.0, 0.0, 0.0])
 
 
@@ -88,7 +88,7 @@ def get_reward(
     u_rew = 1.0 - jnp.clip((u_traj**2).sum(axis=1), 0.0, 1.0)
     # dist2goal_normed = dist2goal / (mdb_params.noise_std**2)
     return (
-        dist_rew.sum() * 1.0 + u_rew.sum() * 0.1 + final_rew * 1.0 + obs_rew.sum() * 1.0
+        dist_rew.sum() * 1.0 + u_rew.sum() * 0.1 + final_rew * 1.0 + obs_rew.sum() * 3.0
     ) * 1.0  # + obs_rew.sum() * 3.0)
 
 
@@ -233,7 +233,7 @@ def get_next_traj(
     )
 
     # reward_scale = jnp.linalg.norm(logp_dynamics_grad_x) / jnp.linalg.norm(reward_grad_x)
-    reward_scale = 1000.0 * 0.3
+    reward_scale = 1.0
     grad_x = logp_dynamics_grad_x + reward_grad_x * reward_scale
 
     # exit()
@@ -257,6 +257,9 @@ def get_next_traj(
     x_traj_new = x_traj_new.at[0].set(
         env_params.init_state
     )  # NOTE: do not add noise to the initial state
+    x_traj_new = x_traj_new.at[-1].set(
+        env_params.goal_state
+    )  # NOTE: do not add noise to the final state
     u_traj_new = (
         u_traj
         + eps * grad_u
@@ -381,27 +384,37 @@ def main():
     plot_reward()
     # check NaN with jax
     # jax.config.update("jax_debug_nans", True)
-    rng = jax.random.PRNGKey(0)
+    rng = jax.random.PRNGKey(1)
 
     # schedule noise here
-    noise_std_init = 5e-2  # 5e-3 #0.2
-    noise_std_final = 5e-3  # 5e-3 #5e-3
+    noise_std_init = 2e-1 #1.0 #5e-2 * 30.0  # 5e-3 #0.2
+    noise_std_final = 5e-3 #5e-3  # 5e-3 #5e-3
     # noise_std_schedule = jnp.ones(diffuse_step) * noise_std_final
     # langevin_eps_schedule = jnp.linspace(2.0, 0.2, diffuse_step) * 1e-5 # 1e-5
     langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 1e-5  # 1e-5
     # use inverse log space to schedule noise
 
     # plan in exponential space
+    # scale = 1.0
     # noise_std_schedule = jnp.exp(
-    #     jnp.linspace(jnp.log(noise_std_init), jnp.log(noise_std_final), diffuse_step)
+    #     jnp.linspace(jnp.log(noise_std_init*scale), jnp.log(noise_std_final*scale), diffuse_step))/scale
     noise_std_schedule = jnp.linspace(noise_std_init, noise_std_final, diffuse_step)
+    # use sigmoid to plan noise
+    # noise_std_schedule = noise_std_init + (noise_std_final - noise_std_init) / (
+    #     1 + jnp.exp(-jnp.linspace(-5, 5, diffuse_step))
+    # )
+    # plot noise schedule
+    # plt.plot(noise_std_schedule)
+    # plt.savefig("figure/noise_schedule.png")
+    # exit()
+
     # noise_var_schedule = noise_std_schedule**2
     # noise_var_diff = -jnp.diff(noise_var_schedule, append=0.0)
     # langevin_eps_schedule = jnp.sqrt(noise_var_diff/diffuse_substeps)
     # plan noise in log space (first change slowly, then change fast)
     # noise_std_schedule = jnp.log(
-    #     jnp.linspace(jnp.exp(noise_std_init*100.0), jnp.exp(noise_std_final*100.0), diffuse_step)
-    # )/100.0
+    #     jnp.linspace(jnp.exp(noise_std_init*3.0), jnp.exp(noise_std_final*3.0), diffuse_step)
+    # )/3.0
 
     # init env and mbd params
     env_params = EnvParams()

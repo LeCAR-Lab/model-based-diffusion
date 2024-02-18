@@ -228,8 +228,7 @@ if __name__ == "__main__":
         # get the noise from noise seq reverse
         dyn_log_l = d_cost(x_traj_scale,u_traj_scale, 2e-5)
         final_cost,obstacle_cost,running_cost = r_cost(x_traj_scale[:,1:],u_traj_scale)
-        loss = -dyn_log_l #- 50000*final_cost-100*running_cost
-        # 180000*obstacle_cost-
+        loss = -dyn_log_l - 50000*final_cost-100*running_cost - 180000*obstacle_cost
         loss.backward()
         # reward_cost.backward()
         # print epoch, dynamic loss, and reward loss
