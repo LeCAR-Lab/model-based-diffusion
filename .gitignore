@@ -165,3 +165,7 @@ cython_debug/
 *.npy
 *.npz
 *.mp4
+
+runs/
+
+.DS_Store
