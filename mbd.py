@@ -17,13 +17,13 @@ task = "drone"  # point, drone
 n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 10  # 50
-diffuse_substeps = 10  # 20
+diffuse_step = 50  # 50
+diffuse_substeps = 40  # 20
 batch_size = 128
 saved_batch_size = 8
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 1e-6
+langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 3e-6
 if obstacle == "umaze":
     langevin_eps_schedule = (
         langevin_eps_schedule * 0.3
@@ -32,11 +32,11 @@ if obstacle == "umaze":
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
 noise_var_init = 1e-1
-noise_var_final = 1e-1
+noise_var_final = 1e-4
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
 # plan in exponential space
-scale = 3.0
+scale = 5.0
 noise_var_schedule = jnp.exp(jnp.linspace(scale, 0.0, diffuse_step)) / jnp.exp(scale)
 noise_var_schedule = (
     noise_var_schedule * (noise_var_init - noise_var_final) + noise_var_final
@@ -136,12 +136,12 @@ def rollout(x0: jnp.ndarray, u: jnp.ndarray, params: Params) -> jnp.ndarray:
 
 
 Q = {
-    "point": jnp.diag(jnp.array([10.0, 10.0, 1.0, 1.0])),
-    "drone": jnp.diag(jnp.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])),
+    "point": jnp.diag(jnp.array([1.0, 1.0, 1.0, 1.0])),
+    "drone": jnp.diag(jnp.array([1.0, 1.0, 0.01, 1.0, 1.0, 0.01])),
 }[task]
 R = {
     "point": jnp.eye(n_action) * 0.1,
-    "drone": jnp.eye(n_action) * 0.1,
+    "drone": jnp.eye(n_action) * 0.5,
 }[task]
 
 
@@ -172,7 +172,7 @@ def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
         )
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
-    return -barrier_cost*100.0
+    return -barrier_cost
 
 
 def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
@@ -574,15 +574,16 @@ for d_step in range(diffuse_step):
     final = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params).mean()
     # schedule dynamic, reward and barrier scale
     reward_scale = params.reward_scale + jnp.clip(
-        jnp.exp(-reward / 1.0) - 1.0, -1.0, 10.0
+        jnp.exp((logpd-25.0) / 25.0) - 1.0, -1.0, 1.0
     )
+    reward_scale = jnp.maximum(reward_scale, 0.0)
     dyn_scale = 1.0
     dyn_scale = jnp.maximum(dyn_scale, 0.0)
     barrier_scale = params.barrier_scale + jnp.clip(
-        jnp.exp(-barrier / 0.1) - 1.0, -10.0, 10.0
+        jnp.exp(-barrier / 0.003) - 1.0, -100.0, 100.0
     )
     barrier_scale = jnp.maximum(barrier_scale, 0.0)
-    final_scale = params.final_scale + jnp.clip(jnp.exp(-final / 1.0) - 1.0, -1.0, 1.0)
+    final_scale = params.final_scale + jnp.clip(jnp.exp(-final / 0.1) - 1.0, -10.0, 10.0)
     final_scale = jnp.maximum(final_scale, 0.0)
     params = params.replace(
         barrier_scale=barrier_scale,
