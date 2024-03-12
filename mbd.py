@@ -16,13 +16,13 @@ task = "drone"  # point, drone
 n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 1  # 50
-diffuse_substeps = 50  # 20
-batch_size = 1
+diffuse_step = 100  # 50
+diffuse_substeps = 20  # 20
+batch_size = 128
 saved_batch_size = 1
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 1e-6
+langevin_eps_schedule = jnp.linspace(10.0, 1.0, diffuse_substeps) * 1e-7
 if obstacle == "umaze":
     langevin_eps_schedule = (
         langevin_eps_schedule * 0.3
@@ -31,11 +31,11 @@ if obstacle == "umaze":
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
 noise_var_init = 1e-1
-noise_var_final = 1e-1
+noise_var_final = 1e-3
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
 # plan in exponential space
-scale = 7.0
+scale = 3.0
 noise_var_schedule = jnp.exp(jnp.linspace(scale, 0.0, diffuse_step)) / jnp.exp(scale)
 noise_var_schedule = (
     noise_var_schedule * (noise_var_init - noise_var_final) + noise_var_final
@@ -171,7 +171,7 @@ def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
         )
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
-    return -barrier_cost
+    return -barrier_cost*10.0
 
 
 def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
@@ -484,7 +484,6 @@ def plot_traj(
     ax.legend(loc="upper left")
     ax.set_title("Scale Normed")
 
-    plt.savefig(f"figure/{filename}.png")
     plt.savefig(f"figure/traj.png")
     # release the plot
     # plt.close(fig)
@@ -577,7 +576,7 @@ for d_step in range(diffuse_step):
     dyn_scale = params.dyn_scale + jnp.clip(jnp.exp(-logpd / 1.0) - 1.0, -1.0, 1.0)
     dyn_scale = jnp.maximum(dyn_scale, 0.0)
     barrier_scale = params.barrier_scale + jnp.clip(
-        jnp.exp(-barrier / 1.0) - 1.0, -1.0, 1.0
+        jnp.exp(-barrier / 0.1) - 1.0, -10.0, 10.0
     )
     barrier_scale = jnp.maximum(barrier_scale, 0.0)
     final_scale = params.final_scale + jnp.clip(jnp.exp(-final / 1.0) - 1.0, -1.0, 1.0)
@@ -616,40 +615,40 @@ for d_step in range(diffuse_step):
 
         # tensorboard
         writer.add_scalar(
-            "barrier", barrier_value, d_step * diffuse_substeps + sub_step
+            "objective/barrier", barrier_value, d_step * diffuse_substeps + sub_step
         )
         writer.add_scalar(
-            "barrier_scale", params.barrier_scale, d_step * diffuse_substeps + sub_step
+            "scale/barrier_scale", params.barrier_scale, d_step * diffuse_substeps + sub_step
         )
         writer.add_scalar(
-            "barrier_scale_normed",
+            "scale_normed/barrier_scale_normed",
             params.barrier_scale / (default_params.barrier_scale+1e-3),
             d_step * diffuse_substeps + sub_step,
         )
-        writer.add_scalar("dyn", logpd, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar("objective/dyn", logpd, d_step * diffuse_substeps + sub_step)
         writer.add_scalar(
-            "dyn_scale", params.dyn_scale, d_step * diffuse_substeps + sub_step
+            "scale/dyn_scale", params.dyn_scale, d_step * diffuse_substeps + sub_step
         )
         writer.add_scalar(
-            "dyn_scale_normed",
+            "scale_normed/dyn_scale_normed",
             params.dyn_scale / (default_params.dyn_scale+1e-3),
             d_step * diffuse_substeps + sub_step,
         )
-        writer.add_scalar("final", final_value, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar("objective/final", final_value, d_step * diffuse_substeps + sub_step)
         writer.add_scalar(
-            "final_scale", params.final_scale, d_step * diffuse_substeps + sub_step
+            "scale/final_scale", params.final_scale, d_step * diffuse_substeps + sub_step
         )
         writer.add_scalar(
-            "final_scale_normed",
+            "scale_normed/final_scale_normed",
             params.final_scale / (default_params.final_scale+1e-3),
             d_step * diffuse_substeps + sub_step,
         )
-        writer.add_scalar("reward", logp_reward, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar("objective/reward", logp_reward, d_step * diffuse_substeps + sub_step)
         writer.add_scalar(
-            "reward_scale", params.reward_scale, d_step * diffuse_substeps + sub_step
+            "scale/reward_scale", params.reward_scale, d_step * diffuse_substeps + sub_step
         )
         writer.add_scalar(
-            "reward_scale_normed",
+            "scale_normed/reward_scale_normed",
             params.reward_scale / (default_params.reward_scale+1e-3),
             d_step * diffuse_substeps + sub_step,
         )
@@ -659,12 +658,18 @@ for d_step in range(diffuse_step):
         )
 
         jax.debug.print(
-            "d_step = {d_step}, substep = {substep}, logp_dynamic = {x:.2f}, logp_reward = {y:.2f}, barrier = {z:.2f}",
+            "i = {substep}/{d_step}, var = {noise:.2e}, Dyn = {x:.2f}({x1:.2f}), J = {y:.2f}({y1:.2f}), Bar = {z:.2f}({z1:.2f}), Final = {w:.2f}({w1:.2f})",
             d_step=d_step,
             substep=sub_step,
+            noise = noise_var,
             x=logpd,
+            x1=params.dyn_scale,
             y=logp_reward,
+            y1=params.reward_scale,
             z=barrier_value,
+            z1=params.barrier_scale,
+            w=final_value,
+            w1=params.final_scale,
         )
 
         # rollout dynamics to get real trajectory
