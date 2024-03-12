@@ -540,10 +540,10 @@ reward_grad_x_norm = jnp.linalg.norm(reward_grad_x, axis=-1).mean()
 barrier_grad_x_norm = jnp.linalg.norm(barrier_grad_x, axis=-1).mean()
 final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
 params = params.replace(
-    dyn_scale =logpd_grad_x_norm / reward_grad_x_norm, 
-    reward_scale = 1.0,
-    barrier_scale = barrier_grad_x_norm / reward_grad_x_norm,
-    final_scale = final_grad_x_norm / reward_grad_x_norm,
+    dyn_scale = 1.0, 
+    reward_scale = reward_grad_x_norm / logpd_grad_x_norm, 
+    barrier_scale = barrier_grad_x_norm / logpd_grad_x_norm,
+    final_scale = final_grad_x_norm / logpd_grad_x_norm,
 )
 jax.debug.print(
     "initial dyn_scale = {x:.2f}, reward_scale = {y:.2f}, barrier_scale = {z:.2f}, final_scale = {w:.2f}",
@@ -573,8 +573,10 @@ for d_step in range(diffuse_step):
     barrier = jax.vmap(get_barrier_jit, in_axes=(0, None))(x_traj, params).mean()
     final = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params).mean()
     # schedule dynamic, reward and barrier scale
-    # reward_scale = 1.0
-    dyn_scale = params.dyn_scale + jnp.clip(jnp.exp(-logpd / 1.0) - 1.0, -1.0, 1.0)
+    reward_scale = params.reward_scale + jnp.clip(
+        jnp.exp(-reward / 1.0) - 1.0, -1.0, 10.0
+    )
+    dyn_scale = 1.0
     dyn_scale = jnp.maximum(dyn_scale, 0.0)
     barrier_scale = params.barrier_scale + jnp.clip(
         jnp.exp(-barrier / 0.1) - 1.0, -10.0, 10.0
