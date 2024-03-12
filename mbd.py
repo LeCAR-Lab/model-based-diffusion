@@ -17,13 +17,13 @@ task = "drone"  # point, drone
 n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 50  # 50
-diffuse_substeps = 50  # 20
+diffuse_step = 10  # 50
+diffuse_substeps = 10  # 20
 batch_size = 128
 saved_batch_size = 8
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(10.0, 1.0, diffuse_substeps) * 1e-7
+langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 1e-6
 if obstacle == "umaze":
     langevin_eps_schedule = (
         langevin_eps_schedule * 0.3
@@ -32,7 +32,7 @@ if obstacle == "umaze":
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
 noise_var_init = 1e-1
-noise_var_final = 1e-3
+noise_var_final = 1e-1
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
 # plan in exponential space
@@ -588,6 +588,7 @@ for d_step in range(diffuse_step):
         barrier_scale=barrier_scale,
         noise_var=noise_var,
         dyn_scale=dyn_scale,
+        reward_scale=reward_scale,
         final_scale=final_scale,
     )
 
