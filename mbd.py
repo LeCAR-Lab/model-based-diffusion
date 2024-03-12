@@ -5,6 +5,7 @@ from jax import numpy as jnp
 from flax import struct
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
+import pandas as pd
 
 # initialize tensorboard
 writer = SummaryWriter()
@@ -17,9 +18,9 @@ n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
 diffuse_step = 50  # 50
-diffuse_substeps = 40  # 20
+diffuse_substeps = 50  # 20
 batch_size = 128
-saved_batch_size = 1
+saved_batch_size = 8
 
 # schedule langevin episilon
 langevin_eps_schedule = jnp.linspace(10.0, 1.0, diffuse_substeps) * 1e-7
@@ -677,6 +678,12 @@ for d_step in range(diffuse_step):
             x_traj[:, 0], u_traj, params
         )
         save_infos.append([x_traj[:saved_batch_size], x_traj_real[:saved_batch_size]])
+
+# save save_infos
+x_traj_save = jnp.stack([x[0] for x in save_infos], axis=0)
+x_traj_real_save = jnp.stack([x[1] for x in save_infos], axis=0)
+jnp.save("figure/x_traj.npy", x_traj_save)
+jnp.save("figure/x_traj_real.npy", x_traj_real_save)
 
 # log information
 log_info = {
