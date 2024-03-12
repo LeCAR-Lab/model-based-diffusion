@@ -10,36 +10,42 @@ from tensorboardX import SummaryWriter
 writer = SummaryWriter()
 
 # global parameters
-obstacle = 'sphere' # sphere, umaze, square, wall
-task = 'drone' # point, drone
+obstacle = "sphere"  # sphere, umaze, square, wall
+task = "drone"  # point, drone
 # global static parameters
-n_state: int = {'point': 4, 'drone': 6}[task]
+n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 10 #50
-diffuse_substeps = 5 #20
-batch_size = 64
-saved_batch_size = 16
+diffuse_step = 1  # 50
+diffuse_substeps = 50  # 20
+batch_size = 1
+saved_batch_size = 1
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(1.0, 0.5, diffuse_substeps) * 1e-7
-if obstacle == 'umaze':
-    langevin_eps_schedule = langevin_eps_schedule * 0.3 # NOTE: umaze needs smaller step size
+langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 1e-6
+if obstacle == "umaze":
+    langevin_eps_schedule = (
+        langevin_eps_schedule * 0.3
+    )  # NOTE: umaze needs smaller step size
 
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
-noise_var_init = 1e-4
-noise_var_final = 1e-4
+noise_var_init = 1e-1
+noise_var_final = 1e-1
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
 # plan in exponential space
 scale = 7.0
-noise_var_schedule = jnp.exp(jnp.linspace(scale,0.0,diffuse_step))/jnp.exp(scale)
-noise_var_schedule = noise_var_schedule * (noise_var_init - noise_var_final) + noise_var_final
+noise_var_schedule = jnp.exp(jnp.linspace(scale, 0.0, diffuse_step)) / jnp.exp(scale)
+noise_var_schedule = (
+    noise_var_schedule * (noise_var_init - noise_var_final) + noise_var_final
+)
 # noise_std_schedule = jnp.linspace(noise_std_init, noise_std_final, diffuse_step)
+
 
 def default_array(array):
     return struct.field(default_factory=lambda: jnp.array(array))
+
 
 @struct.dataclass
 class Params:
@@ -47,25 +53,20 @@ class Params:
     dt: float = 0.1
     r_obs: float = 0.2
     init_state: jnp.ndarray = default_array(
-        {
-            'point': [-1.0, 0.0, 0.0, 0.0],
-            'drone': [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        }[task]
+        {"point": [-1.0, 0.0, 0.0, 0.0], "drone": [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0]}[task]
     )
     goal_state: jnp.ndarray = default_array(
-        {
-            'point': [1.0, 0.0, 0.0, 0.0],
-            'drone': [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        }[task]
+        {"point": [1.0, 0.0, 0.0, 0.0], "drone": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]}[task]
     )
 
     # diffuser parameters
     noise_var: float = 1.0
     langevin_eps: float = 1.0
     dyn_scale: float = 1.0
-    reward_scale: float = 1000.0
-    barrier_scale: float = 1.0e4
-    final_scale: float = 1e4
+    reward_scale: float = 1.0
+    barrier_scale: float = 1.0
+    final_scale: float = 1.0
+
 
 def get_A_point(x: jnp.ndarray, params: Params) -> jnp.ndarray:
     return jnp.array(
@@ -91,6 +92,7 @@ def get_B_point(x: jnp.ndarray, params: Params) -> jnp.ndarray:
         * params.dt
     )
 
+
 def get_A_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
     return jnp.array(
         [
@@ -103,8 +105,10 @@ def get_A_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
         ]
     ) * params.dt + jnp.eye(n_state)
 
+
 def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
-    return jnp.array(
+    return (
+        jnp.array(
             [
                 [0.0, 0.0],
                 [0.0, 0.0],
@@ -113,10 +117,14 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
                 [jnp.sin(x[2]), 0.0],
                 [0.0, 1.0],
             ]
-        ) * params.dt
+        )
+        * params.dt
+    )
 
-get_A = {'point': get_A_point, 'drone': get_A_drone}[task]
-get_B = {'point': get_B_point, 'drone': get_B_drone}[task]
+
+get_A = {"point": get_A_point, "drone": get_A_drone}[task]
+get_B = {"point": get_B_point, "drone": get_B_drone}[task]
+
 
 def rollout(x0: jnp.ndarray, u: jnp.ndarray, params: Params) -> jnp.ndarray:
     def f(x, u):
@@ -127,13 +135,14 @@ def rollout(x0: jnp.ndarray, u: jnp.ndarray, params: Params) -> jnp.ndarray:
 
 
 Q = {
-    'point': jnp.diag(jnp.array([10.0, 10.0, 1.0, 1.0])),
-    'drone': jnp.diag(jnp.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])),
+    "point": jnp.diag(jnp.array([10.0, 10.0, 1.0, 1.0])),
+    "drone": jnp.diag(jnp.array([10.0, 10.0, 10.0, 1.0, 1.0, 1.0])),
 }[task]
 R = {
-    'point': jnp.eye(n_action) * 0.1,
-    'drone': jnp.eye(n_action) * 0.1,
+    "point": jnp.eye(n_action) * 0.1,
+    "drone": jnp.eye(n_action) * 0.1,
 }[task]
+
 
 def get_reward(
     x_traj: jnp.ndarray,
@@ -141,80 +150,105 @@ def get_reward(
     params: Params,
 ) -> jnp.ndarray:
     def get_running_cost(x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
-        x_err = x - params.goal_state   
+        x_err = x - params.goal_state
         return (x_err @ Q @ x_err + u @ R @ u) / 2.0
 
     running_cost = jax.vmap(get_running_cost)(x_traj, u_traj).sum()
     return -running_cost.sum()
+
 
 def get_final_constraint(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     final_err = x_traj[-1] - params.goal_state
     final_cost = final_err @ Q @ final_err
     return -final_cost
 
+
 def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         dist2center = jnp.linalg.norm(x[:2])
-        return jnp.clip((params.r_obs-dist2center), 0.0, params.r_obs)**2 / (params.r_obs**2)
+        return jnp.clip((params.r_obs - dist2center), 0.0, params.r_obs) ** 2 / (
+            params.r_obs**2
+        )
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
+
 
 def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         dist2center = jnp.linalg.norm(x[:2], ord=jnp.inf)
-        return jnp.clip((params.r_obs-dist2center), 0.0, params.r_obs)**2 / (params.r_obs**2)
+        return jnp.clip((params.r_obs - dist2center), 0.0, params.r_obs) ** 2 / (
+            params.r_obs**2
+        )
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
+
 
 def get_barrier_wall(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
-        dist2center_normed = jnp.linalg.norm(x[:2]/jnp.array([0.2, 0.5]), ord=jnp.inf)
-        return jnp.clip((1.0-dist2center_normed), 0.0, 1.0)**2 * (0.2 **2)
+        dist2center_normed = jnp.linalg.norm(x[:2] / jnp.array([0.2, 0.5]), ord=jnp.inf)
+        return jnp.clip((1.0 - dist2center_normed), 0.0, 1.0) ** 2 * (0.2**2)
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
+
 
 def get_barrier_umaze(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     half_width = 0.5
-    keypoints = jnp.array([
-        [-1.0, 1.0], 
-        [0.0, 1.0], 
-        [0.0, -1.0],
-        [-1.0, -1.0]
-    ])
+    keypoints = jnp.array([[-1.0, 1.0], [0.0, 1.0], [0.0, -1.0], [-1.0, -1.0]])
+
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         q = x[:2]
         dist2points = jnp.linalg.norm(q - keypoints, axis=1, ord=jnp.inf)
-        dist1 = (q[0] < -1.0) * dist2points[0] + (q[0] > 0.0) * dist2points[1] + (q[0] >= -1.0) * (q[0] <= 0.0) * jnp.abs(q[1] - 1.0)
-        dist2 = (q[1] < -1.0) * dist2points[2] + (q[1] > 1.0) * dist2points[1] + (q[1] >= -1.0) * (q[1] <= 1.0) * jnp.abs(q[0])
-        dist3 = (q[0] < -1.0) * dist2points[3] + (q[0] > 0.0) * dist2points[2] + (q[0] >= -1.0) * (q[0] <= 0.0) * jnp.abs(q[1] + 1.0)
+        dist1 = (
+            (q[0] < -1.0) * dist2points[0]
+            + (q[0] > 0.0) * dist2points[1]
+            + (q[0] >= -1.0) * (q[0] <= 0.0) * jnp.abs(q[1] - 1.0)
+        )
+        dist2 = (
+            (q[1] < -1.0) * dist2points[2]
+            + (q[1] > 1.0) * dist2points[1]
+            + (q[1] >= -1.0) * (q[1] <= 1.0) * jnp.abs(q[0])
+        )
+        dist3 = (
+            (q[0] < -1.0) * dist2points[3]
+            + (q[0] > 0.0) * dist2points[2]
+            + (q[0] >= -1.0) * (q[0] <= 0.0) * jnp.abs(q[1] + 1.0)
+        )
         dist2mazecenter = jnp.min(jnp.array([dist1, dist2, dist3]))
-        return jnp.clip((half_width-dist2mazecenter), 0.0, half_width)**2
+        return jnp.clip((half_width - dist2mazecenter), 0.0, half_width) ** 2
+
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
+
 
 def get_barrier_rect(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     rect1_center = jnp.array([0.0, 0.0])
     rect1_half = jnp.array([0.2, 0.5])
+
     # calculate the distance to the edge of the rectangle\n
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         x = x[:2]
         x_centered = jnp.clip(jnp.abs(x - rect1_center), jnp.zeros(2), rect1_half)
         dx = rect1_half - x_centered
-        return jnp.minimum(dx[0], dx[1])**2
+        return jnp.minimum(dx[0], dx[1]) ** 2
+
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
 
+
 get_barrier = {
-    'sphere': get_barrier_sphere,
-    'square': get_barrier_square,
-    'wall': get_barrier_wall,
-    'umaze': get_barrier_umaze,
+    "sphere": get_barrier_sphere,
+    "square": get_barrier_square,
+    "wall": get_barrier_wall,
+    "umaze": get_barrier_umaze,
 }[obstacle]
 
-def get_logpd_scan(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+
+def get_logpd_scan(
+    x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params
+) -> jnp.ndarray:
     def step(state, input):
         x_hat, cov_hat, logpd = state
         u_prev, x_current = input
@@ -244,32 +278,36 @@ def get_logpd_scan(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> 
     (x_hat, cov_hat, logpd), _ = lax.scan(step, initial_state, inputs)
     return logpd
 
+reward_grad = jax.grad(get_reward, argnums=[0, 1])
+logpd_grad = jax.grad(get_logpd_scan, argnums=[0, 1])
+barrier_grad = jax.grad(get_barrier, argnums=0)
+final_grad = jax.grad(get_final_constraint, argnums=0)
+
 def update_traj(
     x_traj: jnp.ndarray,
     u_traj: jnp.ndarray,
     params: Params,
     rng: chex.PRNGKey,
 ) -> jnp.ndarray:
-    reward_grad = jax.grad(get_reward, argnums=[0, 1])
     reward_grad_x, reward_grad_u = reward_grad(x_traj, u_traj, params)
 
-    logpd_grad = jax.grad(get_logpd_scan, argnums=[0, 1])
-    logpd_grad_x, logpd_grad_u = logpd_grad(
-        x_traj, u_traj, params
-    )
+    logpd_grad_x, logpd_grad_u = logpd_grad(x_traj, u_traj, params)
 
-    barrier_grad = jax.grad(get_barrier, argnums=0)
     barrier_grad_x = barrier_grad(x_traj, params)
 
-    final_grad = jax.grad(get_final_constraint, argnums=0)
     final_grad_x = final_grad(x_traj, params)
 
-    grad_x = logpd_grad_x * params.dyn_scale + reward_grad_x * params.reward_scale + barrier_grad_x * params.barrier_scale + final_grad_x * params.final_scale
+    grad_x = (
+        logpd_grad_x * params.dyn_scale
+        + reward_grad_x * params.reward_scale
+        + barrier_grad_x * params.barrier_scale
+        + final_grad_x * params.final_scale
+    )
 
     grad_u = logpd_grad_u * params.dyn_scale + reward_grad_u * params.reward_scale
     eps = params.langevin_eps
     rng, rng_x, rng_u = jax.random.split(rng, 3)
-    
+
     x_traj_new = (
         x_traj
         + eps * grad_x
@@ -290,8 +328,10 @@ def update_traj(
 
     return x_traj_new, u_traj_new
 
+
 def plot_traj(
-    fig, axes, 
+    fig,
+    axes,
     x_traj: jnp.ndarray,
     u_traj: jnp.ndarray,
     x_traj_real: jnp.ndarray,
@@ -301,7 +341,7 @@ def plot_traj(
     ax = axes[0, 0]
     # color each point with cmap red
     for i in range(x_traj.shape[0]):
-        if task == 'point':
+        if task == "point":
             ax.scatter(
                 x_traj[i, :, 0],
                 x_traj[i, :, 1],
@@ -310,7 +350,7 @@ def plot_traj(
                 marker="o",
                 alpha=1.0,
             )
-        elif task == 'drone':
+        elif task == "drone":
             ax.quiver(
                 x_traj[i, :, 0],
                 x_traj[i, :, 1],
@@ -339,20 +379,24 @@ def plot_traj(
     ax.plot(1.0, 0.0, "r*", markersize=16)
     # set title
     ax.set_title("Trajectory")
-    if obstacle == 'square':
+    if obstacle == "square":
         rect = plt.Rectangle((-0.2, -0.2), 0.4, 0.4, color="black", fill=False)
         ax.add_artist(rect)
-    elif obstacle == 'wall':
+    elif obstacle == "wall":
         rect = plt.Rectangle((-0.2, -0.5), 0.4, 1.0, color="black", fill=False)
         ax.add_artist(rect)
-    elif obstacle == 'umaze':
-        rect1 = plt.Rectangle((-1.0-0.5, 1.0-0.5), 2.0, 1.0, color="black", fill=False)
-        rect2 = plt.Rectangle((-0.5, -1.0-0.5), 1.0, 3.0, color="black", fill=False)
-        rect3 = plt.Rectangle((-1.0-0.5, -1.0-0.5), 2.0, 1.0, color="black", fill=False)
+    elif obstacle == "umaze":
+        rect1 = plt.Rectangle(
+            (-1.0 - 0.5, 1.0 - 0.5), 2.0, 1.0, color="black", fill=False
+        )
+        rect2 = plt.Rectangle((-0.5, -1.0 - 0.5), 1.0, 3.0, color="black", fill=False)
+        rect3 = plt.Rectangle(
+            (-1.0 - 0.5, -1.0 - 0.5), 2.0, 1.0, color="black", fill=False
+        )
         ax.add_artist(rect1)
         ax.add_artist(rect2)
         ax.add_artist(rect3)
-    elif obstacle == 'sphere':
+    elif obstacle == "sphere":
         circle = plt.Circle((0, 0), 0.2, color="black", fill=False)
         ax.add_artist(circle)
 
@@ -445,6 +489,7 @@ def plot_traj(
     # release the plot
     # plt.close(fig)
 
+
 # init params
 params = Params()
 default_params = Params()
@@ -452,7 +497,7 @@ rng = jax.random.PRNGKey(1)
 
 # init trajectory
 rng, rng_x, rng_u = jax.random.split(rng, 3)
-'''
+"""
 RRT trajectory initialization 
 # generate a line between start and goal
 rrt_points = jnp.array([
@@ -473,17 +518,40 @@ xs = jnp.concatenate(xs, axis=0)
 vs = jnp.concatenate(vs, axis=0)
 x_traj_guess = jnp.concatenate([xs, vs], axis=1)
 x_traj = x_traj_guess[None, :] + jax.random.normal(rng_x, (batch_size, horizon, n_state)) * jnp.array([0.2, 0.2, 0.5, 0.5])
-'''
+"""
 x_traj_guess = jnp.zeros((horizon, n_state))
 x_traj_guess = x_traj_guess.at[:, 0].set(jnp.linspace(-1.0, 1.0, horizon))
 noise_std = {
-    'point': jnp.array([1.0, 2.0, 5.0, 5.0]),
-    'drone': jnp.array([1.0, 2.0, 1.0, 5.0, 5.0, 1.0]),
+    "point": jnp.array([1.0, 2.0, 5.0, 5.0]),
+    "drone": jnp.array([1.0, 2.0, 1.0, 5.0, 5.0, 1.0]),
 }[task]
 x_traj_noise = jax.random.normal(rng_x, (batch_size, horizon, n_state)) * noise_std
 x_traj = x_traj_guess[None, :] + x_traj_noise
 u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action))
 x_traj = x_traj.at[:, 0].set(params.init_state)
+
+# initialize parameters
+logpd_grad_x, logpd_grad_u = jax.vmap(logpd_grad, in_axes=(0,0,None))(x_traj, u_traj, params)
+reward_grad_x, reward_grad_u = jax.vmap(reward_grad, in_axes=(0,0,None))(x_traj, u_traj, params)
+barrier_grad_x = jax.vmap(barrier_grad, in_axes=(0,None))(x_traj, params)
+final_grad_x = jax.vmap(final_grad, in_axes=(0,None))(x_traj, params)
+logpd_grad_x_norm = jnp.linalg.norm(logpd_grad_x, axis=-1).mean()
+reward_grad_x_norm = jnp.linalg.norm(reward_grad_x, axis=-1).mean()
+barrier_grad_x_norm = jnp.linalg.norm(barrier_grad_x, axis=-1).mean()
+final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
+params = params.replace(
+    dyn_scale =logpd_grad_x_norm / reward_grad_x_norm, 
+    reward_scale = 1.0,
+    barrier_scale = barrier_grad_x_norm / reward_grad_x_norm,
+    final_scale = final_grad_x_norm / reward_grad_x_norm,
+)
+jax.debug.print(
+    "initial dyn_scale = {x:.2f}, reward_scale = {y:.2f}, barrier_scale = {z:.2f}, final_scale = {w:.2f}",
+    x=params.dyn_scale,
+    y=params.reward_scale,
+    z=params.barrier_scale,
+    w=params.final_scale,
+)
 
 save_infos = []
 update_traj_jit = jax.jit(update_traj)
@@ -506,14 +574,19 @@ for d_step in range(diffuse_step):
     final = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params).mean()
     # schedule dynamic, reward and barrier scale
     # reward_scale = 1.0
-    dyn_scale = params.dyn_scale + jnp.clip(jnp.exp(-logpd / 1000.0) - 1.0, -1.0, 3.0)
-    # dyn_scale = params.dyn_scale + jnp.clip(-logpd / 1000.0, -10.0, 10.0)
+    dyn_scale = params.dyn_scale + jnp.clip(jnp.exp(-logpd / 1.0) - 1.0, -1.0, 1.0)
     dyn_scale = jnp.maximum(dyn_scale, 0.0)
-    barrier_scale = params.barrier_scale + jnp.clip(jnp.exp(-barrier / 0.001) - 1.0, -1.0, 2000.0) 
+    barrier_scale = params.barrier_scale + jnp.clip(
+        jnp.exp(-barrier / 1.0) - 1.0, -1.0, 1.0
+    )
     barrier_scale = jnp.maximum(barrier_scale, 0.0)
-    final_scale = params.final_scale + jnp.clip(jnp.exp(-final / 1.0) - 1.0, -1.0, 1000.0) 
+    final_scale = params.final_scale + jnp.clip(jnp.exp(-final / 1.0) - 1.0, -1.0, 1.0)
     final_scale = jnp.maximum(final_scale, 0.0)
-    params = params.replace(barrier_scale=barrier_scale, noise_var=noise_var, dyn_scale=dyn_scale, final_scale=final_scale
+    params = params.replace(
+        barrier_scale=barrier_scale,
+        noise_var=noise_var,
+        dyn_scale=dyn_scale,
+        final_scale=final_scale,
     )
 
     for sub_step in range(diffuse_substeps):
@@ -542,20 +615,48 @@ for d_step in range(diffuse_step):
         ).mean()
 
         # tensorboard
-        writer.add_scalar("barrier", barrier_value, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("barrier_scale", params.barrier_scale, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("barrier_scale_normed", params.barrier_scale / default_params.barrier_scale, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar(
+            "barrier", barrier_value, d_step * diffuse_substeps + sub_step
+        )
+        writer.add_scalar(
+            "barrier_scale", params.barrier_scale, d_step * diffuse_substeps + sub_step
+        )
+        writer.add_scalar(
+            "barrier_scale_normed",
+            params.barrier_scale / (default_params.barrier_scale+1e-3),
+            d_step * diffuse_substeps + sub_step,
+        )
         writer.add_scalar("dyn", logpd, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("dyn_scale", params.dyn_scale, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("dyn_scale_normed", params.dyn_scale / default_params.dyn_scale, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar(
+            "dyn_scale", params.dyn_scale, d_step * diffuse_substeps + sub_step
+        )
+        writer.add_scalar(
+            "dyn_scale_normed",
+            params.dyn_scale / (default_params.dyn_scale+1e-3),
+            d_step * diffuse_substeps + sub_step,
+        )
         writer.add_scalar("final", final_value, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("final_scale", params.final_scale, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("final_scale_normed", params.final_scale / default_params.final_scale, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar(
+            "final_scale", params.final_scale, d_step * diffuse_substeps + sub_step
+        )
+        writer.add_scalar(
+            "final_scale_normed",
+            params.final_scale / (default_params.final_scale+1e-3),
+            d_step * diffuse_substeps + sub_step,
+        )
         writer.add_scalar("reward", logp_reward, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("reward_scale", params.reward_scale, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("reward_scale_normed", params.reward_scale / default_params.reward_scale, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar(
+            "reward_scale", params.reward_scale, d_step * diffuse_substeps + sub_step
+        )
+        writer.add_scalar(
+            "reward_scale_normed",
+            params.reward_scale / (default_params.reward_scale+1e-3),
+            d_step * diffuse_substeps + sub_step,
+        )
         writer.add_scalar("noise_var", noise_var, d_step * diffuse_substeps + sub_step)
-        writer.add_scalar("langevin_eps", langevin_eps, d_step * diffuse_substeps + sub_step)
+        writer.add_scalar(
+            "langevin_eps", langevin_eps, d_step * diffuse_substeps + sub_step
+        )
 
         jax.debug.print(
             "d_step = {d_step}, substep = {substep}, logp_dynamic = {x:.2f}, logp_reward = {y:.2f}, barrier = {z:.2f}",
