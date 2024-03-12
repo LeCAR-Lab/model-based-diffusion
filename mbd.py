@@ -16,8 +16,8 @@ task = "drone"  # point, drone
 n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
-diffuse_step = 100  # 50
-diffuse_substeps = 20  # 20
+diffuse_step = 50  # 50
+diffuse_substeps = 40  # 20
 batch_size = 128
 saved_batch_size = 1
 
@@ -171,7 +171,7 @@ def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
         )
 
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
-    return -barrier_cost*10.0
+    return -barrier_cost*100.0
 
 
 def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
