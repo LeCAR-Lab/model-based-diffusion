@@ -13,7 +13,7 @@ parser.add_argument("--end", type=int, default=x_trajs.shape[0])
 args = parser.parse_args()
 
 
-obstacle = 'sphere'
+obstacle = 'umaze'
 task = 'drone'
 
 horizon = x_trajs.shape[2]
