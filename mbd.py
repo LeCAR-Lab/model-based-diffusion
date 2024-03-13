@@ -18,12 +18,12 @@ n_state: int = {"point": 4, "drone": 6}[task]
 n_action: int = 2
 horizon: int = 50
 diffuse_step = 50  # 50
-diffuse_substeps = 40  # 20
+diffuse_substeps = 30  # 20
 batch_size = 128
 saved_batch_size = 8
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(1.0, 0.1, diffuse_substeps) * 3e-6
+langevin_eps_schedule = jnp.linspace(1.0, 0.5, diffuse_substeps) * 3e-6
 if obstacle == "umaze":
     langevin_eps_schedule = (
         langevin_eps_schedule * 0.3
@@ -32,7 +32,7 @@ if obstacle == "umaze":
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
 noise_var_init = 1e-1
-noise_var_final = 1e-4
+noise_var_final = 6e-4
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
 # plan in exponential space
@@ -52,7 +52,7 @@ def default_array(array):
 class Params:
     # environment parameters
     dt: float = 0.1
-    r_obs: float = 0.2
+    r_obs: float = 0.5
     init_state: jnp.ndarray = default_array(
         {"point": [-1.0, 0.0, 0.0, 0.0], "drone": [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0]}[task]
     )
@@ -116,7 +116,7 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
                 [0.0, 0.0],
                 [jnp.cos(x[2]), 0.0],
                 [jnp.sin(x[2]), 0.0],
-                [0.0, 1.0],
+                [0.0, 6.0],
             ]
         )
         * params.dt
@@ -141,7 +141,7 @@ Q = {
 }[task]
 R = {
     "point": jnp.eye(n_action) * 0.1,
-    "drone": jnp.eye(n_action) * 0.5,
+    "drone": jnp.eye(n_action) * 0.1,
 }[task]
 
 

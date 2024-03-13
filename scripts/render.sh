@@ -1,5 +1,5 @@
 parallel_num=8
-total_frames=2000
+total_frames=1500
 frame_per_thread=$((total_frames / parallel_num))
 
 # record time

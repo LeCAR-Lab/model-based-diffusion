@@ -37,7 +37,7 @@ for i in range(args.start, args.end):
         ax.add_artist(rect2)
         ax.add_artist(rect3)
     elif obstacle == 'sphere':
-        circle = plt.Circle((0, 0), 0.2, color="black", fill=False)
+        circle = plt.Circle((0, 0), 0.5, color="black", fill=False)
         ax.add_artist(circle)
     for j in range(x_traj.shape[0]):
         if task == 'point':
