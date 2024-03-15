@@ -1,4 +1,6 @@
 import dynamax
+import jax
+jax.config.update("jax_platform_name", "cpu")
 import matplotlib.pyplot as plt
 import jax.numpy as jnp
 import jax.random as jr
@@ -15,11 +17,11 @@ jnp.set_printoptions(formatter={"float_kind": "{:.2f}".format})
 # Some parameters
 dt = 0.0125
 g = 9.8
-q_c = 100.0
-r = 1.0
+q_c = 1.0 # how far it is allowed to deviate from the true dynamics
+r = 1.0 # how far it is allowed to deviate from the true state
 num_steps = 400
 
-reward_function = lambda x, u: (- 1.0 - jnp.cos(x[0]))/2.0
+reward_function = lambda x, u: (- 1.0 - jnp.cos(x[0]))
 
 # Lightweight container for pendulum parameters
 class PendulumParams(NamedTuple):
@@ -28,6 +30,7 @@ class PendulumParams(NamedTuple):
     dynamics_function: Callable = lambda x, u: jnp.array([x[0] + x[1] * dt, x[1] + (-g * jnp.sin(x[0])+u[0]) * dt])
     reward_function: Callable = reward_function
     dynamics_covariance: Float[Array, "state_dim state_dim"] = jnp.array([[q_c * dt**3/3, q_c * dt**2/2], [q_c * dt**2/2, q_c * dt]])
+    # dynamics_covariance: Float[Array, "state_dim state_dim"] = jnp.array([[q_c * dt**3/6, 0.0], [0.0, q_c * dt]])
     emission_function: Callable = lambda x, u: jnp.append(x, jnp.exp(reward_function(x, u)))
     emission_covariance: Float[Array, "emission_dim"] = jnp.diag(jnp.array([r**2, r**2, 0.001]))
 
@@ -45,7 +48,7 @@ def simulate_pendulum(params=PendulumParams(), key=0, num_steps=400):
         rng, action = x
         rng1, rng2 = jr.split(rng, 2)
 
-        next_state = f(state, action)
+        next_state = f(state, action) + jr.multivariate_normal(rng1, jnp.zeros(M), Q)
         obs = h(next_state, action) + jr.multivariate_normal(rng2, jnp.zeros(N), R)
         return next_state, (next_state, obs)
 
@@ -59,10 +62,13 @@ states, obs = simulate_pendulum(num_steps=num_steps)
 
 def plot_pendulum(time_grid, x_tr, x_obs, x_est=None, est_type=""):
     plt.figure()
+    x_tr = x_tr.at[:, 0].set((x_tr[:, 0]+jnp.pi)%(2*jnp.pi) - jnp.pi)
     plt.plot(time_grid, x_tr, color="darkgray", linewidth=4, label="True Angle")
+    x_obs = x_obs.at[:, 0].set((x_obs[:, 0]+jnp.pi)%(2*jnp.pi) - jnp.pi)
     for i in range(x_obs.shape[1]):
         plt.plot(time_grid, x_obs[:, i], "o", fillstyle="none", ms=1.5, label=f"Measurements {i}")
     if x_est is not None:
+        x_est = x_est.at[:, 0].set((x_est[:, 0]+jnp.pi)%(2*jnp.pi) - jnp.pi)
         for i in range(x_est.shape[1]):
             plt.plot(time_grid, x_est[:, i], linewidth=1.5, label=f"{est_type} Estimate {i}")
     plt.xlabel("Time $t$")
@@ -95,7 +101,7 @@ pendulum_params = PendulumParams()
 # Define parameters for EKF
 ekf_params = ParamsNLGSSM(
     initial_mean=pendulum_params.initial_state,
-    initial_covariance=jnp.eye(states.shape[-1]) * 0.1,
+    initial_covariance=jnp.eye(states.shape[-1]) * 0.0,
     dynamics_function=pendulum_params.dynamics_function,
     dynamics_covariance=pendulum_params.dynamics_covariance,
     emission_function=pendulum_params.emission_function,
@@ -109,10 +115,16 @@ m_ekf = ekf_posterior.filtered_means
 plot_pendulum(time_grid, states, obs, x_est=m_ekf, est_type="EKF")
 compute_and_print_rmse_comparison(states[:, 0], m_ekf[:, 0], r, "EKF")
 
+m_ekf = ekf_posterior.smoothed_means
+plot_pendulum(time_grid, states, obs, x_est=m_ekf, est_type="EKS")
+compute_and_print_rmse_comparison(states[:, 0], m_ekf[:, 0], r, "EKS")
+
+# save efk_posterior.filtered_means and ekf_posterior.smoothed_means and states
+jnp.save("../figure/ekf_filtered_means.npy", ekf_posterior.filtered_means)
+jnp.save("../figure/ekf_smoothed_means.npy", ekf_posterior.smoothed_means)
+jnp.save("../figure/states.npy", states)
+
 """
-m_ekf = ekf_posterior.smoothed_means[:, 0]
-plot_pendulum(time_grid, states[:, 0], obs, x_est=m_ekf, est_type="EKS")
-compute_and_print_rmse_comparison(states[:, 0], m_ekf, r, "EKS")
 pendulum_params = PendulumParams()
 
 ukf_params = ParamsNLGSSM(
