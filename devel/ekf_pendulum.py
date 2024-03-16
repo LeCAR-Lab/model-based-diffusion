@@ -19,20 +19,23 @@ dt = 0.0125
 g = 9.8
 q_c = 1.0 # how far it is allowed to deviate from the true dynamics
 r = 1.0 # how far it is allowed to deviate from the true state
-num_steps = 400
+num_steps = 500
 
 reward_function = lambda x, u: (- 1.0 - jnp.cos(x[0]))
 
 # Lightweight container for pendulum parameters
 class PendulumParams(NamedTuple):
-    initial_state: Float[Array, "state_dim"] = jnp.array([jnp.pi / 2, 0])
+    # initial_state: Float[Array, "state_dim"] = jnp.array([jnp.pi / 2, 0])
+    initial_state: Float[Array, "state_dim"] = jnp.array([0.1, 0.0])
     initial_inputs: Float[Array, "num_timesteps input_dim"] = jnp.zeros((num_steps, 1))
     dynamics_function: Callable = lambda x, u: jnp.array([x[0] + x[1] * dt, x[1] + (-g * jnp.sin(x[0])+u[0]) * dt])
     reward_function: Callable = reward_function
     dynamics_covariance: Float[Array, "state_dim state_dim"] = jnp.array([[q_c * dt**3/3, q_c * dt**2/2], [q_c * dt**2/2, q_c * dt]])
     # dynamics_covariance: Float[Array, "state_dim state_dim"] = jnp.array([[q_c * dt**3/6, 0.0], [0.0, q_c * dt]])
-    emission_function: Callable = lambda x, u: jnp.append(x, jnp.exp(reward_function(x, u)))
-    emission_covariance: Float[Array, "emission_dim"] = jnp.diag(jnp.array([r**2, r**2, 0.001]))
+    # emission_function: Callable = lambda x, u: jnp.append(x, jnp.exp(reward_function(x, u)))
+    # emission_covariance: Float[Array, "emission_dim"] = jnp.diag(jnp.array([r**2, r**2, 0.001]))
+    emission_function: Callable = lambda x, u: jnp.array([jnp.exp(reward_function(x, u))])
+    emission_covariance: Float[Array, "emission_dim"] = jnp.diag(jnp.array([1.0]))
 
 # Pendulum simulation (Särkkä Example 3.7)
 def simulate_pendulum(params=PendulumParams(), key=0, num_steps=400):
@@ -80,7 +83,7 @@ def plot_pendulum(time_grid, x_tr, x_obs, x_est=None, est_type=""):
     plt.savefig(f"../figure/pendulum_{est_type.lower()}.jpg", bbox_inches="tight")
 
 # Create time grid for plotting
-time_grid = jnp.arange(0.0, 5.0, step=dt)
+time_grid = jnp.arange(0.0, num_steps*dt, step=dt)
 
 # Plot the generated data
 plot_pendulum(time_grid, states, obs)
@@ -108,7 +111,7 @@ ekf_params = ParamsNLGSSM(
     emission_covariance=pendulum_params.emission_covariance,
 )
 
-obs = obs.at[:, 2].set(1)
+obs = obs.at[:, 0].set(1)
 ekf_posterior = extended_kalman_smoother(ekf_params, obs, inputs=pendulum_params.initial_inputs)
 
 m_ekf = ekf_posterior.filtered_means

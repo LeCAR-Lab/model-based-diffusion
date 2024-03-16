@@ -1,4 +1,4 @@
-parallel_num=24
+parallel_num=4
 total_frames=400
 frame_per_thread=$((total_frames / parallel_num))
 
