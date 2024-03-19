@@ -63,15 +63,16 @@ def logp(ys, xs, sigma):
     logpd = -0.5 * jnp.sum(((ys - xs)/sigma)**2, axis=[0, 1])
     # cost likelihood
     costs = jax.vmap(cost)(xs)
+    costs = costs.at[-1].set(costs[-1] * 1000.0)
     logpc = -costs.sum()
-    return logpd + logpc
+    return logpc + logpd
 
 # generate states
 y_key, key = jax.random.split(key)
 ys = jax.random.normal(y_key, (H, 2)) * 2.0
 # sample trajectories
 us_key, key = jax.random.split(key)
-us_batch = jax.random.normal(us_key, (N, H, 2))
+us_batch = jax.random.uniform(us_key, (N, H, 2)) * 2.0 - 1.0
 xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
 # get likelihood
 sigma = 2.0
