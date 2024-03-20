@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # parameters
-dt = 0.5
+dt = 0.25
 key = jax.random.PRNGKey(1)
 N = 4096  # sampled trajectory number
 H = 50  # horizon
@@ -144,4 +144,4 @@ for (i, var) in enumerate(np.arange(4.0, 0.0, -0.1)):
         sigma_ys = jnp.sqrt(0.1)
     else:
         sigma_ys = jnp.sqrt(1.0 / (1.0 / 0.1 + 1.0 / (var - 0.1)))
-    ys = xs + jax.random.normal(ys_key, (H, 2)) * sigma_ys
+    ys = xs + (ys-xs)*(var-0.1)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
