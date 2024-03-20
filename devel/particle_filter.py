@@ -4,7 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # parameters
-dt = 0.25
+dt = 0.4
 key = jax.random.PRNGKey(1)
 N = 4096  # sampled trajectory number
 H = 50  # horizon
@@ -18,6 +18,8 @@ def check_pass_wall(p1, p2, x1, x2):
 
 
 def f(x, u):
+    u = jnp.clip(u, -1.0, 1.0)
+
     x_new = x + dt * u
 
     # check if the particle passes the wall
@@ -124,6 +126,7 @@ def denoise_traj(ys, us, sigma, key):
     # filter for new trajectory
     us_key, key = jax.random.split(key)
     us_batch = us + jax.random.normal(us_key, (N, H, 2)) * sigma * 0.5
+    us_batch = jnp.clip(us_batch, -1.0, 1.0)
     xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
     logps = jax.vmap(get_logp, in_axes=(None, 0, None))(ys, xs_batch, sigma)
     w_unnorm = jnp.exp(logps - jnp.max(logps))
