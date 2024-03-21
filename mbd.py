@@ -6,13 +6,14 @@ from flax import struct
 import matplotlib.pyplot as plt
 from tensorboardX import SummaryWriter
 import pandas as pd
+import os          
 
 # initialize tensorboard
 writer = SummaryWriter()
 
 # global parameters
 obstacle = "umaze"  # sphere, umaze, square, wall, control
-task = "pendulum"  # point, drone, pendulum
+task = "point"  # point, drone, pendulum
 if task == 'pendulum':
     obstacle = 'control'
     print("task is pendulum, obstacle should be control")
@@ -220,11 +221,11 @@ get_final_constraint = {
 }[task]
 
 def x_traj_interpolate(x_traj: jnp.ndarray, interp_ratio: int) -> jnp.ndarray:
-    
     linear_ratio = jnp.linspace(0, 1, interp_ratio)
-    x_traj_interpolated = jnp.zeros((x_traj.shape[0], interp_ratio, x_traj.shape[1], x_traj.shape[2]))
+    print(x_traj.shape)
+    x_traj_interpolated = jnp.zeros((interp_ratio, x_traj.shape[0]-1, x_traj.shape[1]))
     for i in range(interp_ratio):
-        x_traj_interpolated.at[:, i,:,:].set(x_traj * linear_ratio[i] + x_traj[:,1:] * (1 - linear_ratio[i]))
+        x_traj_interpolated.at[i,:,:].set(x_traj[:-1] * linear_ratio[i] + x_traj[1:] * (1 - linear_ratio[i]))
     return x_traj_interpolated
 
 def get_barrier_sphere(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
@@ -264,6 +265,8 @@ def get_barrier_umaze(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) 
 
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         q = x[:2]
+        print(x.shape)
+        print(q.shape)
         dist2points = jnp.linalg.norm(q - keypoints, axis=1, ord=jnp.inf)
         dist1 = (
             (q[0] < -1.0) * dist2points[0]
@@ -283,7 +286,8 @@ def get_barrier_umaze(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) 
         dist2mazecenter = jnp.min(jnp.array([dist1, dist2, dist3]))
         return jnp.clip((half_width - dist2mazecenter), 0.0, half_width) ** 2
     x_inter = x_traj_interpolate(x_traj, 10)
-    barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
+    x_inter = x_inter.reshape(-1, x_traj.shape[1])
+    barrier_cost = jax.vmap(get_barrier_cost)(x_inter).sum()/10
     return -barrier_cost
 
 
