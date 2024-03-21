@@ -163,6 +163,13 @@ def get_final_constraint(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     final_cost = final_err @ Q @ final_err
     return -final_cost
 
+def x_traj_interpolate(x_traj: jnp.ndarray, interp_ratio: int) -> jnp.ndarray:
+    
+    linear_ratio = jnp.linspace(0, 1, interp_ratio)
+    x_traj_interpolated = jnp.zeros((x_traj.shape[0], interp_ratio, x_traj.shape[1], x_traj.shape[2]))
+    for i in range(interp_ratio):
+        x_traj_interpolated.at[:, i,:,:].set(x_traj * linear_ratio[i] + x_traj[:,1:] * (1 - linear_ratio[i]))
+    return x_traj_interpolated
 
 def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
@@ -219,7 +226,7 @@ def get_barrier_umaze(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
         )
         dist2mazecenter = jnp.min(jnp.array([dist1, dist2, dist3]))
         return jnp.clip((half_width - dist2mazecenter), 0.0, half_width) ** 2
-
+    x_inter = x_traj_interpolate(x_traj, 10)
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
 
