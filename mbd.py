@@ -11,14 +11,17 @@ import pandas as pd
 writer = SummaryWriter()
 
 # global parameters
-obstacle = "umaze"  # sphere, umaze, square, wall
-task = "drone"  # point, drone
+obstacle = "umaze"  # sphere, umaze, square, wall, control
+task = "pendulum"  # point, drone, pendulum
+if task == 'pendulum':
+    obstacle = 'control'
+    print("task is pendulum, obstacle should be control")
 # global static parameters
-n_state: int = {"point": 4, "drone": 6}[task]
-n_action: int = 2
+n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
+n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
 horizon: int = 50
-diffuse_step = 100  # 50
-diffuse_substeps = 100  # 20
+diffuse_step = 40
+diffuse_substeps = 50
 batch_size = 128
 saved_batch_size = 8
 
@@ -54,10 +57,18 @@ class Params:
     dt: float = 0.1
     r_obs: float = 0.5
     init_state: jnp.ndarray = default_array(
-        {"point": [-1.0, 0.0, 0.0, 0.0], "drone": [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0]}[task]
+        {
+            "point": [-1.0, 0.0, 0.0, 0.0], 
+            "drone": [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
+            "pendulum": [0.0, 0.0]
+        }[task]
     )
     goal_state: jnp.ndarray = default_array(
-        {"point": [1.0, 0.0, 0.0, 0.0], "drone": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0]}[task]
+        {
+            "point": [1.0, 0.0, 0.0, 0.0], 
+            "drone": [1.0, 0.0, 0.0, 0.0, 0.0, 0.0], 
+            "pendulum": [jnp.pi, 0.0]
+        }[task]
     )
 
     # diffuser parameters
@@ -122,9 +133,25 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
         * params.dt
     )
 
+def get_A_pendulum(x: jnp.ndarray, params: Params) -> jnp.ndarray:
+    return jnp.array(
+        [
+            [0.0, 2.0],
+            [0.0, 0.0],
+        ]
+    ) * params.dt + jnp.eye(n_state)
 
-get_A = {"point": get_A_point, "drone": get_A_drone}[task]
-get_B = {"point": get_B_point, "drone": get_B_drone}[task]
+def get_B_pendulum(x: jnp.ndarray, params: Params) -> jnp.ndarray:
+    return jnp.array(
+        [
+            [0.0],
+            [2.0],
+        ]
+    ) * params.dt
+
+
+get_A = {"point": get_A_point, "drone": get_A_drone, "pendulum": get_A_pendulum}[task]
+get_B = {"point": get_B_point, "drone": get_B_drone, "pendulum": get_B_pendulum}[task]
 
 
 def rollout(x0: jnp.ndarray, u: jnp.ndarray, params: Params) -> jnp.ndarray:
@@ -138,14 +165,16 @@ def rollout(x0: jnp.ndarray, u: jnp.ndarray, params: Params) -> jnp.ndarray:
 Q = {
     "point": jnp.diag(jnp.array([1.0, 1.0, 1.0, 1.0])),
     "drone": jnp.diag(jnp.array([1.0, 1.0, 0.01, 1.0, 1.0, 0.01])),
+    "pendulum": None, 
 }[task]
 R = {
     "point": jnp.eye(n_action) * 0.1,
     "drone": jnp.eye(n_action) * 0.1,
+    "pendulum": None, 
 }[task]
 
 
-def get_reward(
+def get_reward_navigation(
     x_traj: jnp.ndarray,
     u_traj: jnp.ndarray,
     params: Params,
@@ -157,11 +186,38 @@ def get_reward(
     running_cost = jax.vmap(get_running_cost)(x_traj, u_traj).sum()
     return -running_cost.sum()
 
+def get_reward_pendulum(
+    x_traj: jnp.ndarray,
+    u_traj: jnp.ndarray,
+    params: Params,
+) -> jnp.ndarray:
+    def get_running_cost(x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
+        theta = x[0]
+        theta_dot = x[1]
+        return jnp.cos(theta) + 0.1 * theta_dot ** 2 + 0.01 * u ** 2
 
-def get_final_constraint(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+    running_cost = jax.vmap(get_running_cost)(x_traj, u_traj).sum()
+    return -running_cost.sum()
+
+get_reward = {
+    "point": get_reward_navigation,
+    "drone": get_reward_navigation,
+    "pendulum": get_reward_pendulum,
+}[task]
+
+def get_final_constraint_navigation(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     final_err = x_traj[-1] - params.goal_state
     final_cost = final_err @ Q @ final_err
     return -final_cost
+
+def get_final_constraint_pendulum(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+    return -jnp.cos(x_traj[-1, 0])-1.0
+
+get_final_constraint = {
+    "point": get_final_constraint_navigation,
+    "drone": get_final_constraint_navigation,
+    "pendulum": get_final_constraint_pendulum,
+}[task]
 
 def x_traj_interpolate(x_traj: jnp.ndarray, interp_ratio: int) -> jnp.ndarray:
     
@@ -171,7 +227,7 @@ def x_traj_interpolate(x_traj: jnp.ndarray, interp_ratio: int) -> jnp.ndarray:
         x_traj_interpolated.at[:, i,:,:].set(x_traj * linear_ratio[i] + x_traj[:,1:] * (1 - linear_ratio[i]))
     return x_traj_interpolated
 
-def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+def get_barrier_sphere(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         dist2center = jnp.linalg.norm(x[:2])
         return jnp.clip((params.r_obs - dist2center), 0.0, params.r_obs) ** 2 / (
@@ -182,7 +238,7 @@ def get_barrier_sphere(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     return -barrier_cost
 
 
-def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+def get_barrier_square(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         dist2center = jnp.linalg.norm(x[:2], ord=jnp.inf)
         return jnp.clip((params.r_obs - dist2center), 0.0, params.r_obs) ** 2 / (
@@ -193,7 +249,7 @@ def get_barrier_square(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     return -barrier_cost
 
 
-def get_barrier_wall(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+def get_barrier_wall(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     def get_barrier_cost(x: jnp.ndarray) -> jnp.ndarray:
         dist2center_normed = jnp.linalg.norm(x[:2] / jnp.array([0.2, 0.5]), ord=jnp.inf)
         return jnp.clip((1.0 - dist2center_normed), 0.0, 1.0) ** 2 * (0.2**2)
@@ -202,7 +258,7 @@ def get_barrier_wall(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     return -barrier_cost
 
 
-def get_barrier_umaze(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+def get_barrier_umaze(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     half_width = 0.5
     keypoints = jnp.array([[-1.0, 1.0], [0.0, 1.0], [0.0, -1.0], [-1.0, -1.0]])
 
@@ -231,7 +287,7 @@ def get_barrier_umaze(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     return -barrier_cost
 
 
-def get_barrier_rect(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+def get_barrier_rect(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     rect1_center = jnp.array([0.0, 0.0])
     rect1_half = jnp.array([0.2, 0.5])
 
@@ -245,12 +301,19 @@ def get_barrier_rect(x_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
     barrier_cost = jax.vmap(get_barrier_cost)(x_traj).sum()
     return -barrier_cost
 
+def get_barrier_control(x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params) -> jnp.ndarray:
+    def get_barrier_cost(x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
+        return jnp.maximum(jnp.abs(u)-1.0, 0.0).sum()
+
+    barrier_cost = jax.vmap(get_barrier_cost)(x_traj, u_traj).sum()
+    return -barrier_cost
 
 get_barrier = {
     "sphere": get_barrier_sphere,
     "square": get_barrier_square,
     "wall": get_barrier_wall,
     "umaze": get_barrier_umaze,
+    "control": get_barrier_control,
 }[obstacle]
 
 
@@ -288,7 +351,7 @@ def get_logpd_scan(
 
 reward_grad = jax.grad(get_reward, argnums=[0, 1])
 logpd_grad = jax.grad(get_logpd_scan, argnums=[0, 1])
-barrier_grad = jax.grad(get_barrier, argnums=0)
+barrier_grad = jax.grad(get_barrier, argnums=[0, 1])
 final_grad = jax.grad(get_final_constraint, argnums=0)
 
 def update_traj(
@@ -301,7 +364,7 @@ def update_traj(
 
     logpd_grad_x, logpd_grad_u = logpd_grad(x_traj, u_traj, params)
 
-    barrier_grad_x = barrier_grad(x_traj, params)
+    barrier_grad_x, barrier_grad_u = barrier_grad(x_traj, u_traj, params)
 
     final_grad_x = final_grad(x_traj, params)
 
@@ -312,7 +375,7 @@ def update_traj(
         + final_grad_x * params.final_scale
     )
 
-    grad_u = logpd_grad_u * params.dyn_scale + reward_grad_u * params.reward_scale
+    grad_u = logpd_grad_u * params.dyn_scale + reward_grad_u * params.reward_scale + barrier_grad_u * params.barrier_scale
     eps = params.langevin_eps
     rng, rng_x, rng_u = jax.random.split(rng, 3)
 
@@ -374,189 +437,41 @@ def vis_traj(x_traj, x_traj_real, filename):
                 cmap="Reds",
                 alpha=1.0,
             )
-        ax.plot(
-            x_traj[j, :, 0],
-            x_traj[j, :, 1],
-            "r",
-            alpha=0.2,
-        )
-        ax.plot(
-            x_traj_real[j, :, 0],
-            x_traj_real[j, :, 1],
-            "b--",
-        )
+        if task == 'point' or task == 'drone':
+            ax.plot(
+                x_traj[j, :, 0],
+                x_traj[j, :, 1],
+                "r",
+                alpha=0.2,
+            )
+            ax.plot(
+                x_traj_real[j, :, 0],
+                x_traj_real[j, :, 1],
+                "b--",
+            )
+        elif task == 'pendulum':
+            ax.plot(
+                x_traj[j, :, 0],
+                "r",
+                alpha=1.0,
+            )
+            ax.plot(
+                x_traj_real[j, :, 0],
+                "b--",
+            )
     ax.grid()
-    ax.set_xlim([-2, 2])
-    ax.set_ylim([-2, 2])
-    ax.set_aspect("equal", adjustable="box")
-    # plot star at [1, 0]
-    ax.plot(1.0, 0.0, "r*", markersize=16)
+    if task == 'point' or task == 'drone':
+        ax.set_xlim([-2, 2])
+        ax.set_ylim([-2, 2])
+        ax.set_aspect("equal", adjustable="box")
+        # plot star at [1, 0]
+        ax.plot(1.0, 0.0, "r*", markersize=16)
     # set title
     ax.set_title("Trajectory")
     # save figure to file
     plt.savefig(f"figure/{filename}.png")
     
     ax.clear()
-
-def plot_traj(
-    fig,
-    axes,
-    x_traj: jnp.ndarray,
-    u_traj: jnp.ndarray,
-    x_traj_real: jnp.ndarray,
-    log_info: dict,
-    filename: str = "",
-):
-    ax = axes[0, 0]
-    # color each point with cmap red
-    for i in range(x_traj.shape[0]):
-        if task == "point":
-            ax.scatter(
-                x_traj[i, :, 0],
-                x_traj[i, :, 1],
-                c=range(horizon),
-                cmap="Reds",
-                marker="o",
-                alpha=1.0,
-            )
-        elif task == "drone":
-            ax.quiver(
-                x_traj[i, :, 0],
-                x_traj[i, :, 1],
-                jnp.cos(x_traj[i, :, 2]),
-                jnp.sin(x_traj[i, :, 2]),
-                range(horizon),
-                cmap="Reds",
-                alpha=1.0,
-            )
-        ax.plot(
-            x_traj[i, :, 0],
-            x_traj[i, :, 1],
-            "r",
-            alpha=0.2,
-        )
-        ax.plot(
-            x_traj_real[i, :, 0],
-            x_traj_real[i, :, 1],
-            "b--",
-        )
-    ax.grid()
-    ax.set_xlim([-2.0, 2.0])
-    ax.set_ylim([-2.0, 2.0])
-    ax.set_aspect("equal", adjustable="box")
-    # plot star at [1, 0]
-    ax.plot(1.0, 0.0, "r*", markersize=16)
-    # set title
-    ax.set_title("Trajectory")
-    if obstacle == "square":
-        rect = plt.Rectangle((-0.2, -0.2), 0.4, 0.4, color="black", fill=False)
-        ax.add_artist(rect)
-    elif obstacle == "wall":
-        rect = plt.Rectangle((-0.2, -0.5), 0.4, 1.0, color="black", fill=False)
-        ax.add_artist(rect)
-    elif obstacle == "umaze":
-        rect1 = plt.Rectangle(
-            (-1.0 - 0.5, 1.0 - 0.5), 2.0, 1.0, color="black", fill=False
-        )
-        rect2 = plt.Rectangle((-0.5, -1.0 - 0.5), 1.0, 3.0, color="black", fill=False)
-        rect3 = plt.Rectangle(
-            (-1.0 - 0.5, -1.0 - 0.5), 2.0, 1.0, color="black", fill=False
-        )
-        ax.add_artist(rect1)
-        ax.add_artist(rect2)
-        ax.add_artist(rect3)
-    elif obstacle == "sphere":
-        circle = plt.Circle((0, 0), 0.2, color="black", fill=False)
-        ax.add_artist(circle)
-
-    # plot x, y, theta
-    # fig, ax = plt.subplots(1, 1)
-    ax = axes[0, 1]
-    ax.plot(x_traj[0, :, 0], "r", label="x")
-    ax.plot(x_traj[0, :, 1], "g", label="y")
-    # ax.plot(x_traj[:, 2], "b", label="theta")
-    ax.plot(x_traj_real[0, :, 0], "r--", label="x_real")
-    ax.plot(x_traj_real[0, :, 1], "g--", label="y_real")
-    # ax.plot(x_traj_real[:, 2], "b--", label="theta_real")
-    ax.grid()
-    ax.set_xlim([0, horizon])
-    ax.set_ylim([-1.5, 1.5])
-    ax.legend(loc="upper left")
-    ax.set_title("State")
-    # plt.savefig(f"figure/{filename}_xytheta.png")
-    # # release the plot
-    # plt.close(fig)
-
-    # plot T, tau
-    # fig, ax = plt.subplots(1, 1)
-    ax = axes[0, 2]
-    ax.plot(u_traj[0, :, 0], "c", label="$T$")
-    ax.plot(u_traj[0, :, 1], "m", label="$tau$")
-    ax.grid()
-    ax.set_xlim([0, horizon])
-    ax.set_ylim([-2.0, 2.0])
-    ax.legend(loc="upper left")
-    ax.set_title("Control")
-    # plt.savefig(f"figure/{filename}_u.png")
-    # # release the plot
-    # plt.close(fig)
-
-    ax = axes[1, 0]
-    ax.plot(log_info["logpd"], "r", label="logp_dynamics")
-    for i in range(diffuse_step):
-        ax.axvline(x=i * diffuse_substeps, color="black", linestyle="--")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Dynamic Log Probability")
-
-    ax = axes[1, 1]
-    ax.plot(log_info["logp_reward"], "b", label="logp_reward")
-    for i in range(diffuse_step):
-        ax.axvline(x=i * diffuse_substeps, color="black", linestyle="--")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Reward")
-
-    ax = axes[1, 2]
-    ax.plot(log_info["barrier"], "g", label="barrier")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Barrier")
-
-    ax = axes[0, 3]
-    ax.plot(log_info["noise_var"], "black", label="noise_var")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Diffusion Noise Var")
-
-    ax = axes[1, 3]
-    ax.plot(log_info["langevin_eps"], "black", label="langevin_eps")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Langevin Eps")
-
-    ax = axes[0, 4]
-    ax.plot(log_info["barrier_scale"], "black", label="barrier_scale")
-    ax.plot(log_info["reward_scale"], "red", label="reward_scale")
-    ax.plot(log_info["dyn_scale"], "blue", label="dyn_scale")
-    ax.plot(log_info["final_scale"], "green", label="final_scale")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Scale")
-
-    ax = axes[1, 4]
-    ax.plot(log_info["barrier_scale_normed"], "black", label="barrier_scale_normed")
-    ax.plot(log_info["reward_scale_normed"], "red", label="reward_scale_normed")
-    ax.plot(log_info["dyn_scale_normed"], "blue", label="dyn_scale_normed")
-    ax.plot(log_info["final_scale_normed"], "green", label="final_scale_normed")
-    ax.grid()
-    ax.legend(loc="upper left")
-    ax.set_title("Scale Normed")
-
-    plt.savefig(f"figure/traj.png")
-    # release the plot
-    # plt.close(fig)
-
 
 # init params
 params = Params()
@@ -594,19 +509,22 @@ x_traj_guess = x_traj_guess.at[:, 0].set(jnp.linspace(-1.0, 1.0, horizon))
 noise_std = {
     "point": jnp.array([1.0, 2.0, 5.0, 5.0]),
     "drone": jnp.array([1.0, 2.0, 1.0, 5.0, 5.0, 1.0]),
+    "pendulum": jnp.array([jnp.pi, 1.0]),
 }[task]
 x_traj_noise = jax.random.normal(rng_x, (batch_size, horizon, n_state)) * noise_std
 if task == "point":
     x_traj = x_traj_guess[None, :] + x_traj_noise * jnp.array([1.0, 1.0, 1.0, 1.0])
 elif task == "drone":
     x_traj = x_traj_guess[None, :] + x_traj_noise * jnp.array([2.0, 2.0, jnp.pi, 1.0, 1.0, 1.0])
+elif task == "pendulum":
+    x_traj = x_traj_noise * jnp.array([jnp.pi, 1.0])
 u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action)) * 0.1
 x_traj = x_traj.at[:, 0].set(params.init_state)
 
 # initialize parameters
 logpd_grad_x, logpd_grad_u = jax.vmap(logpd_grad, in_axes=(0,0,None))(x_traj, u_traj, params)
 reward_grad_x, reward_grad_u = jax.vmap(reward_grad, in_axes=(0,0,None))(x_traj, u_traj, params)
-barrier_grad_x = jax.vmap(barrier_grad, in_axes=(0,None))(x_traj, params)
+barrier_grad_x, barrier_grad_u = jax.vmap(barrier_grad, in_axes=(0,0,None))(x_traj,u_traj, params)
 final_grad_x = jax.vmap(final_grad, in_axes=(0,None))(x_traj, params)
 logpd_grad_x_norm = jnp.linalg.norm(logpd_grad_x, axis=-1).mean()
 reward_grad_x_norm = jnp.linalg.norm(reward_grad_x, axis=-1).mean()
@@ -655,8 +573,8 @@ for d_step in range(diffuse_step):
         logp_reward = jax.vmap(get_reward_jit, in_axes=(0, 0, None))(
             x_traj, u_traj, params
         ).mean()
-        barrier_value = jax.vmap(get_barrier_jit, in_axes=(0, None))(
-            x_traj, params
+        barrier_value = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(
+            x_traj, u_traj, params
         ).mean()
         final_value = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(
             x_traj, params
@@ -734,12 +652,13 @@ for d_step in range(diffuse_step):
     reward = jax.vmap(get_reward_jit, in_axes=(0, 0, None))(
         x_traj, u_traj, params
     ).mean()
-    barrier = jax.vmap(get_barrier_jit, in_axes=(0, None))(x_traj, params).mean()
+    barrier = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(x_traj, u_traj, params).mean()
     final = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params).mean()
     # schedule dynamic, reward and barrier scale
     reward_scale = params.reward_scale + jnp.clip(
         jnp.exp((logpd-10.0) / 1000.0) - 1.0, -1.0, 1.0
     )
+
     reward_scale = jnp.maximum(reward_scale, 0.0)
     dyn_scale = 1.0
     dyn_scale = jnp.maximum(dyn_scale, 0.0)
@@ -785,15 +704,3 @@ log_info = {
     "logp_reward": jnp.zeros(diffuse_step * diffuse_substeps),
     "barrier": jnp.zeros(diffuse_step * diffuse_substeps),
 }
-
-# visualize trajectory
-fig, axes = plt.subplots(2, 5, figsize=(16, 6))
-plot_traj(
-    fig,
-    axes,
-    x_traj[:saved_batch_size],
-    u_traj[:saved_batch_size],
-    x_traj_real[:saved_batch_size],
-    log_info,
-    "",
-)
