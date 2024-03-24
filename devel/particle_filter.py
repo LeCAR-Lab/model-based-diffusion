@@ -40,7 +40,7 @@ def f(x, u):
 
 
 def cost(x):
-    return jnp.sum((x - jnp.array([1.0, 0.0])) ** 2)
+    return jnp.sum((x - jnp.array([1.0, 0.0])) ** 2) * 0.01
 
 
 def plot_dyn(xs, ys, name="foo", xss = None):
@@ -103,7 +103,7 @@ def get_logpd(ys, xs, sigma):
 
 def get_logpc(xs):
     costs = jax.vmap(cost)(xs)
-    costs = costs.at[-1].set(costs[-1] * 10.0)
+    costs = costs.at[-1].set(costs[-1] * 100.0)
     logpc = -costs.sum()
     return logpc
 
@@ -111,19 +111,21 @@ def get_logpc(xs):
 def get_logp(ys, xs, sigma):
     logpd = get_logpd(ys, xs, sigma)
     logpc = get_logpc(xs)
-    return (logpc*0.1 + logpd)
+    return (logpc + logpd)
 
 
 # run MPPI
 us_key, key = jax.random.split(key)
 us_batch = jax.random.normal(us_key, (N, H, 2)) * 1.0
 xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
-logpc = jax.vmap(get_logpc)(xs_batch) * 0.1
+logpc = jax.vmap(get_logpc)(xs_batch)
 w_unnorm = jnp.exp(logpc - jnp.max(logpc))
 w = w_unnorm / jnp.sum(w_unnorm, axis=0)
 us_mppi = jnp.sum(w[:, None, None] * us_batch, axis=0)
 xs_mppi = rollout_traj(jnp.array([-1.0, 0.0]), us_mppi)
 plot_dyn(xs_mppi, xs_mppi, "MPPI", xs_batch[:8])
+
+# exit()
 
 def denoise_traj(ys, us, sigma, key):
     # filter for new trajectory
@@ -141,14 +143,15 @@ def denoise_traj(ys, us, sigma, key):
 ys_key, key = jax.random.split(key)
 us = jax.random.normal(ys_key, (H, 2)) * 1.0
 ys = jax.random.normal(ys_key, (H, 2)) * 2.0
-for (i, var) in enumerate(np.arange(0.6, 0.0, -0.02)):
+var_step = 0.01
+for (i, var) in enumerate(np.arange(0.5, 0.0, -var_step)):
     sigma = jnp.sqrt(var)
     xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
     # if i % 3 == 0:
     plot_dyn(xs, ys, f"denoise_{i}", xs_batch)
 
-    if var < 0.11:
-        sigma_ys = jnp.sqrt(0.1)
+    if var <= var_step:
+        sigma_ys = jnp.sqrt(var_step)
     else:
-        sigma_ys = jnp.sqrt(1.0 / (1.0 / 0.1 + 1.0 / (var - 0.1)))
-    ys = xs + (ys-xs)*(var-0.1)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
+        sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
+    ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
