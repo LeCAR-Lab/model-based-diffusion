@@ -22,8 +22,8 @@ n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
 horizon: int = 50
 diffuse_step = 40
-diffuse_substeps = 200
-batch_size = 32
+diffuse_substeps = 400
+batch_size = 128
 saved_batch_size = 8
 
 # schedule langevin episilon
@@ -183,8 +183,8 @@ def get_reward_navigation(
     def get_running_cost(x: jnp.ndarray, u: jnp.ndarray) -> jnp.ndarray:
         x_err = x - params.goal_state
         x_err = jnp.concatenate([x_err[:2], x_err[3:]])
-        return (x_err @ Q @ x_err + u @ R @ u) / 2.0
-        # return (u @ R @ u) / 2.0
+        # return (x_err @ Q @ x_err + u @ R @ u) / 2.0
+        return (u @ R @ u) / 2.0
 
     running_cost = jax.vmap(get_running_cost)(x_traj, u_traj).sum()
     return -running_cost.sum()
@@ -531,7 +531,7 @@ elif task == "drone":
     x_traj = x_traj_guess[None, :] + x_traj_noise * jnp.array([2.0, 6.0, jnp.pi,2* 1.0, 6.0, 3.0])
 elif task == "pendulum":
     x_traj = x_traj_noise * jnp.array([jnp.pi, 1.0])
-u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action)) * 0.1
+u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action)) * 0.8 - 0.2
 x_traj = x_traj.at[:, 0].set(params.init_state)
 
 # initialize parameters
@@ -545,18 +545,18 @@ barrier_grad_x_norm = jnp.linalg.norm(barrier_grad_x, axis=-1).mean()
 final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
 params = params.replace(
     dyn_scale = 1.0, 
-    reward_scale = 5e-3, 
+    reward_scale = 3e-3, 
     barrier_scale = 1150.0,
     final_scale = 150.0,
 )
 jax.debug.print(
-    "initial dyn_scale = {x:.2f}, reward_scale = {y:.2f}, barrier_scale = {z:.2f}, final_scale = {w:.2f}",
+    "initial dyn_scale = {x:.3f}, reward_scale = {y:.3f}, barrier_scale = {z:.3f}, final_scale = {w:.3f}",
     x=params.dyn_scale,
     y=params.reward_scale,
     z=params.barrier_scale,
     w=params.final_scale,
 )
-
+barrier_threshold = 0.009
 save_infos = []
 update_traj_jit = jax.jit(update_traj)
 get_logpd_scan_jit = jax.jit(get_logpd_scan)
@@ -566,6 +566,7 @@ get_final_constraint_jit = jax.jit(get_final_constraint)
 lagerangian_substeps = 10
 for d_step in range(diffuse_step):
     # schedule noise_var
+    barrier_goal = barrier_threshold + 0.02/50*d_step
     noise_var = noise_var_schedule[d_step]
     if d_step == 0:
         langevin_eps = langevin_eps_schedule[0] * (noise_var / 2e-5)
@@ -651,7 +652,7 @@ for d_step in range(diffuse_step):
                 x_traj[:, 0], u_traj, params
             )
         jax.debug.print(
-            "i = {substep}/{d_step}, var = {noise:.2e}, Dyn = {x:.2f}({x1:.2f}), J = {y:.2f}({y1:.2f}), Bar = {z:.2f}({z1:.2f}), Final = {w:.2f}({w1:.2f})",
+            "i = {substep}/{d_step}, var = {noise:.2e}, Dyn = {x:.3e}({x1:.3e}), J = {y:.3e}({y1:.3e}), Bar = {z:.3e}({z1:.3e}), Final = {w:.3e}({w1:.3e})",
             d_step=d_step,
             substep=sub_step,
             noise = noise_var,
@@ -667,7 +668,7 @@ for d_step in range(diffuse_step):
         save_infos.append([x_traj[:saved_batch_size], x_traj_real[:saved_batch_size]])
         barrier = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(x_traj, u_traj, params).mean()
         barrier_scale = params.barrier_scale + jnp.clip(
-        jnp.exp((-barrier - 0.012)/ 0.003) - 1.0, -100.0, 100.0)
+        jnp.exp((-barrier - barrier_threshold)/ 0.002) - 1.0, -100.0, 100.0)
         barrier_scale = jnp.maximum(barrier_scale, 0.0)
         dyn_scale = 1.0
         final = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params).mean()
@@ -687,8 +688,12 @@ for d_step in range(diffuse_step):
         # reward_scale=reward_scale,
         final_scale=final_scale
         )
-        if (-barrier)< 0.015 and (-final) < 0.05:
+        print('barrier goal:', -barrier_goal)
+        if (-barrier)<(barrier_goal) and (-final) < 0.05:
             break 
+    if d_step == 0:
+        barrier_threshold = -barrier
+        print('barrier_threshold:', barrier_threshold)
     # get values for dynamic, reward and barrier scale
     # logpd = jax.vmap(get_logpd_scan_jit, in_axes=(0, 0, None))(
     #     x_traj, u_traj, params
