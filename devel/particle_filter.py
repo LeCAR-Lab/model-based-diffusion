@@ -40,7 +40,7 @@ def f(x, u):
 
 
 def cost(x):
-    return jnp.sum((x - jnp.array([1.0, 0.0])) ** 2) * 0.01
+    return jnp.sum((x - jnp.array([1.0, 0.0])) ** 2)
 
 
 def plot_dyn(xs, ys, name="foo", xss = None):
@@ -108,10 +108,10 @@ def get_logpc(xs):
     return logpc
 
 
-def get_logp(ys, xs, sigma):
+def get_logp(ys, xs, sigma, pc_weight=1.0):
     logpd = get_logpd(ys, xs, sigma)
     logpc = get_logpc(xs)
-    return (logpc + logpd)
+    return (logpc*pc_weight + logpd)
 
 
 # run MPPI
@@ -133,7 +133,10 @@ def denoise_traj(ys, us, sigma, key):
     us_batch = us + jax.random.normal(us_key, (N, H, 2)) * sigma * 2.0
     us_batch = jnp.clip(us_batch, -1.0, 1.0)
     xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
-    logps = jax.vmap(get_logp, in_axes=(None, 0, None))(ys, xs_batch, sigma)
+    # pc_weight change according to the sigma. smaller sigma (0.3->0.0) -> larger pc_weight (0.01->1.0)
+    # pc_weight = jnp.clip(1.0 - sigma / 0.3, 0.0, 1.0)
+    pc_weight = jnp.where(sigma < 0.3, 10.0, 0.01)
+    logps = jax.vmap(get_logp, in_axes=(None, 0, None, None))(ys, xs_batch, sigma, pc_weight)
     w_unnorm = jnp.exp(logps - jnp.max(logps))
     w = w_unnorm / jnp.sum(w_unnorm, axis=0)
     us_new = jnp.sum(w[:, None, None] * us_batch, axis=0)
@@ -144,11 +147,23 @@ ys_key, key = jax.random.split(key)
 us = jax.random.normal(ys_key, (H, 2)) * 1.0
 ys = jax.random.normal(ys_key, (H, 2)) * 2.0
 var_step = 0.01
-for (i, var) in enumerate(np.arange(0.5, 0.0, -var_step)):
+for (i, var) in enumerate(np.arange(0.5, 0.1, -var_step)):
     sigma = jnp.sqrt(var)
     xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
-    # if i % 3 == 0:
+    # if i % 10 == 9:
     plot_dyn(xs, ys, f"denoise_{i}", xs_batch)
+
+    if var <= var_step:
+        sigma_ys = jnp.sqrt(var_step)
+    else:
+        sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
+    ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
+var_step = 0.001
+for (i, var) in enumerate(np.arange(0.1, 0.0, -var_step)):
+    sigma = jnp.sqrt(var)
+    xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
+    # if i % 10 == 9:
+    plot_dyn(xs, ys, f"denoise_{i+40}", xs_batch)
 
     if var <= var_step:
         sigma_ys = jnp.sqrt(var_step)
