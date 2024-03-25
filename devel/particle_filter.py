@@ -118,7 +118,7 @@ def get_logp(ys, xs, sigma, pc_weight=1.0):
 us_key, key = jax.random.split(key)
 us_batch = jax.random.normal(us_key, (N, H, 2)) * 1.0
 xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
-logpc = jax.vmap(get_logpc)(xs_batch)
+logpc = jax.vmap(get_logpc)(xs_batch)*1.0
 w_unnorm = jnp.exp(logpc - jnp.max(logpc))
 w = w_unnorm / jnp.sum(w_unnorm, axis=0)
 us_mppi = jnp.sum(w[:, None, None] * us_batch, axis=0)
@@ -135,20 +135,21 @@ def denoise_traj(ys, us, sigma, key):
     xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(jnp.array([-1.0, 0.0]), us_batch)
     # pc_weight change according to the sigma. smaller sigma (0.3->0.0) -> larger pc_weight (0.01->1.0)
     # pc_weight = jnp.clip(1.0 - sigma / 0.3, 0.0, 1.0)
-    pc_weight = jnp.where(sigma < 0.3, 10.0, 0.01)
-    logps = jax.vmap(get_logp, in_axes=(None, 0, None, None))(ys, xs_batch, sigma, pc_weight)
+    # pc_weight = jnp.where(sigma < 0.3, 10.0, 0.01)
+    logps = jax.vmap(get_logp, in_axes=(None, 0, None, None))(ys, xs_batch, sigma, 1.0)
     w_unnorm = jnp.exp(logps - jnp.max(logps))
     w = w_unnorm / jnp.sum(w_unnorm, axis=0)
     us_new = jnp.sum(w[:, None, None] * us_batch, axis=0)
-    xs_new = rollout_traj(jnp.array([-1.0, 0.0]), us_new)
+    xs_new = jnp.sum(w[:, None, None] * xs_batch, axis=0)
     return xs_new, us_new, key, xs_batch[:8]
 
 ys_key, key = jax.random.split(key)
 us = jax.random.normal(ys_key, (H, 2)) * 1.0
 ys = jax.random.normal(ys_key, (H, 2)) * 2.0
-var_step = 0.01
-for (i, var) in enumerate(np.arange(0.5, 0.1, -var_step)):
+var_step = 0.003
+for (i, var) in enumerate(np.arange(0.5, 0.0, -var_step)):
     sigma = jnp.sqrt(var)
+    # x|yi
     xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
     # if i % 10 == 9:
     plot_dyn(xs, ys, f"denoise_{i}", xs_batch)
@@ -156,17 +157,21 @@ for (i, var) in enumerate(np.arange(0.5, 0.1, -var_step)):
     if var <= var_step:
         sigma_ys = jnp.sqrt(var_step)
     else:
-        sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
-    ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
-var_step = 0.001
-for (i, var) in enumerate(np.arange(0.1, 0.0, -var_step)):
-    sigma = jnp.sqrt(var)
-    xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
-    # if i % 10 == 9:
-    plot_dyn(xs, ys, f"denoise_{i+40}", xs_batch)
-
-    if var <= var_step:
+        # sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
         sigma_ys = jnp.sqrt(var_step)
-    else:
-        sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
+    # yi-1|yi
     ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
+    # yi-1
+    
+# var_step = 0.001
+# for (i, var) in enumerate(np.arange(0.1, 0.0, -var_step)):
+#     sigma = jnp.sqrt(var)
+#     xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
+#     # if i % 10 == 9:
+#     plot_dyn(xs, ys, f"denoise_{i+40}", xs_batch)
+
+#     if var <= var_step:
+#         sigma_ys = jnp.sqrt(var_step)
+#     else:
+#         sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
+#     ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H, 2)) * sigma_ys
