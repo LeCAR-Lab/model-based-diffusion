@@ -71,11 +71,11 @@ for i in range(args.start, args.end):
             "b--",
         )
     ax.grid()
-    ax.set_xlim([-2, 2])
-    ax.set_ylim([-2, 2])
+    ax.set_xlim([-2.5, 2.5])
+    ax.set_ylim([-2.5, 2.5])
     ax.set_aspect("equal", adjustable="box")
     # plot star at [1, 0]
-    ax.plot(1.0, 0.0, "r*", markersize=16)
+    ax.plot(2.0, 0.0, "r*", markersize=16)
     # set title
     ax.set_title("Trajectory")
     # save figure to file
