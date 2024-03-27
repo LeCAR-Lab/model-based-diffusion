@@ -22,12 +22,12 @@ n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
 horizon: int = 50
 diffuse_step = 40
-diffuse_substeps = 400
+diffuse_substeps = 3000
 batch_size = 128
-saved_batch_size = 8
+saved_batch_size = 4
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(1.0, 0.8, diffuse_substeps) * 2e-6
+langevin_eps_schedule = jnp.linspace(5.0, 0.01, diffuse_substeps) * 2e-6
 # if obstacle == "umaze":
 #     langevin_eps_schedule = (
 #         langevin_eps_schedule * 0.3
@@ -35,7 +35,7 @@ langevin_eps_schedule = jnp.linspace(1.0, 0.8, diffuse_substeps) * 2e-6
 
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
-noise_var_init = 4e-1
+noise_var_init = 2e-1
 noise_var_final = 2e-3
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
@@ -386,8 +386,9 @@ def update_traj(
         + barrier_grad_x * params.barrier_scale
         + final_grad_x * params.final_scale
     )
-
+    grad_x = jnp.clip(grad_x, -2.0, 2.0)
     grad_u = logpd_grad_u * params.dyn_scale + reward_grad_u * params.reward_scale + barrier_grad_u * params.barrier_scale
+    grad_u = jnp.clip(grad_u, -2.0, 2.0)
     eps = params.langevin_eps
     rng, rng_x, rng_u = jax.random.split(rng, 3)
 
@@ -412,7 +413,7 @@ def update_traj(
     return x_traj_new, u_traj_new
 
 def vis_traj(x_traj, x_traj_real, filename):
-    fig, ax = plt.subplots(1, 1)
+    fig, (ax,ax2)= plt.subplots(1, 2)
     if obstacle == 'square':
         rect = plt.Rectangle((-0.2, -0.2), 0.4, 0.4, color="black", fill=False)
         ax.add_artist(rect)
@@ -473,16 +474,23 @@ def vis_traj(x_traj, x_traj_real, filename):
             )
     ax.grid()
     if task == 'point' or task == 'drone':
-        ax.set_xlim([-2, 2])
-        ax.set_ylim([-2, 2])
+        ax.set_xlim([-3, 2.5])
+        ax.set_ylim([-4.0, 4.0])
         ax.set_aspect("equal", adjustable="box")
         # plot star at [1, 0]
         ax.plot(params.goal_state[0],params.goal_state[1], "r*", markersize=16)
     # set title
     ax.set_title("Trajectory")
     # save figure to file
+    ## Add a subplot
+    ## Set ax2 has the saax2.axis('square')
+    ax2.set_aspect('auto', adjustable='box')
+    ax2.plot(x_traj[0, :, 0], label='x')
+    ax2.plot(x_traj[0, :, 1], label='y')
+    ax2.legend()
+    ax2.set_title("Trajectory")
     plt.savefig(f"figure/{filename}.png")
-    
+    ax2.clear()
     ax.clear()
 
 # init params
@@ -546,7 +554,7 @@ final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
 params = params.replace(
     dyn_scale = 1.0, 
     reward_scale = 3e-3, 
-    barrier_scale = 1150.0,
+    barrier_scale = 500.0,
     final_scale = 150.0,
 )
 jax.debug.print(
@@ -568,8 +576,6 @@ for d_step in range(diffuse_step):
     # schedule noise_var
     barrier_goal = barrier_threshold + 0.02/50*d_step
     noise_var = noise_var_schedule[d_step]
-    if d_step == 0:
-        langevin_eps = langevin_eps_schedule[0] * (noise_var / 2e-5)
     if d_step > 1:
         # diffuse_substeps = 100
         lagerangian_substeps = 5
@@ -587,19 +593,22 @@ for d_step in range(diffuse_step):
             x_traj, u_traj = jax.vmap(update_traj_jit, in_axes=(0, 0, None, 0))(
                 x_traj, u_traj, params, jax.random.split(rng, batch_size)
             )
-
-            logpd = jax.vmap(get_logpd_scan_jit, in_axes=(0, 0, None))(
+            logpd_batch = jax.vmap(get_logpd_scan_jit, in_axes=(0, 0, None))(
                 x_traj, u_traj, params
-            ).mean()
-            logp_reward = jax.vmap(get_reward_jit, in_axes=(0, 0, None))(
+            )
+            logpd = logpd_batch.mean()
+            logpd_top = jnp.percentile(logpd_batch, 95)
+            logp_reward_batch = jax.vmap(get_reward_jit, in_axes=(0, 0, None))(
                 x_traj, u_traj, params
-            ).mean()
-            barrier_value = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(
-                x_traj, u_traj, params
-            ).mean()
-            final_value = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(
-                x_traj, params
-            ).mean()
+            )
+            logp_reward = logp_reward_batch.mean()
+            logp_reward_top = jnp.percentile(logp_reward_batch, 95)
+            barrier_value_batch = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(x_traj, u_traj, params)
+            barrier_value = barrier_value_batch.mean()
+            barrier_value_top = jnp.percentile(barrier_value_batch, 95)
+            final_value_batch = jax.vmap(get_final_constraint_jit, in_axes=(0, None))(x_traj, params)
+            final_value = final_value_batch.mean()
+            final_value_top = jnp.percentile(final_value_batch, 95)
 
             # tensorboard
             writer.add_scalar(
@@ -664,6 +673,13 @@ for d_step in range(diffuse_step):
             z1=params.barrier_scale,
             w=final_value,
             w1=params.final_scale,
+        )
+        jax.debug.print(
+            "top_value, Dyn = {x:.3e}, J = {y:.3e}, Bar = {z:.3e}, Final = {w:.3e}",
+            x=logpd_top,
+            y=logp_reward_top,
+            z=barrier_value_top,
+            w=final_value_top,
         )
         save_infos.append([x_traj[:saved_batch_size], x_traj_real[:saved_batch_size]])
         barrier = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(x_traj, u_traj, params).mean()
