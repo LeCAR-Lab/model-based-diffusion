@@ -128,7 +128,7 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
                 [0.0, 0.0],
                 [jnp.cos(x[2]), 0.0],
                 [jnp.sin(x[2]), 0.0],
-                [0.0, 10.0],
+                [0.0, 3.0],
             ]
         )
         * params.dt
