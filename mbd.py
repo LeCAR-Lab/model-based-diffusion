@@ -20,7 +20,7 @@ if task == 'pendulum':
 # global static parameters
 n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
-horizon: int = 50
+horizon: int = 50*2
 diffuse_step = 40
 diffuse_substeps = 3000
 batch_size = 128
@@ -126,9 +126,9 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
                 [0.0, 0.0],
                 [0.0, 0.0],
                 [0.0, 0.0],
-                [jnp.cos(x[2]), 0.0],
-                [jnp.sin(x[2]), 0.0],
-                [0.0, 3.0],
+                [jnp.cos(x[2])*3.0, 0.0],
+                [jnp.sin(x[2])*3.0, 0.0],
+                [0.0, 10.0],
             ]
         )
         * params.dt
@@ -474,8 +474,8 @@ def vis_traj(x_traj, x_traj_real, filename):
             )
     ax.grid()
     if task == 'point' or task == 'drone':
-        ax.set_xlim([-3, 2.5])
-        ax.set_ylim([-4.0, 4.0])
+        ax.set_xlim([-3, 3])
+        ax.set_ylim([-3, 3])
         ax.set_aspect("equal", adjustable="box")
         # plot star at [1, 0]
         ax.plot(params.goal_state[0],params.goal_state[1], "r*", markersize=16)
@@ -497,6 +497,42 @@ def vis_traj(x_traj, x_traj_real, filename):
 params = Params()
 default_params = Params()
 rng = jax.random.PRNGKey(1)
+
+# test out dynamics with pid controller
+if task == 'drone':
+    key_points = jnp.array([
+        [-2.0, 0.5], 
+        [-2.0, 2.0], 
+        [1.0, 2.0], 
+        [1.0, 0.0]
+    ])
+    def pid_control(x, x_goal):
+        # x_goal = jnp.array([1.0, 0.0])
+        x_err = x_goal - x[:2]
+        fd = x_err*3.0 - x[3:5]*4.0
+        # fd = x_err*10.0 - x[3:5]*12.0
+        theta = jnp.arctan2(fd[1], fd[0])
+        theta_err = theta - x[2]
+        theta_err = (theta_err + jnp.pi) % (2 * jnp.pi) - jnp.pi
+        # calculate thrust by project fd into the direction of drone
+        n = jnp.array([jnp.cos(x[2]), jnp.sin(x[2])])
+        thrust = jnp.dot(fd, n)
+        thrust = jnp.clip(thrust, -1.0, 1.0)
+        torque = jnp.clip(theta_err*3.0-x[5]*1.0, -1.0, 1.0)
+        return jnp.array([thrust, torque])
+    desired_point_idx = 0
+    x = params.init_state
+    xs = []
+    for t in range(horizon):
+        u = pid_control(x, key_points[desired_point_idx])
+        x = get_A(x, params) @ x + get_B(x, params) @ u
+        if jnp.linalg.norm(x[:2] - key_points[desired_point_idx]) < 0.2:
+            desired_point_idx += 1
+        xs.append(x)
+    x_traj_pid = jnp.array(xs)
+    vis_traj(x_traj_pid[None, :], x_traj_pid[None, :], "pid")
+
+exit()
 
 # init trajectory
 rng, rng_x, rng_u = jax.random.split(rng, 3)
