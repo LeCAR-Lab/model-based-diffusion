@@ -532,7 +532,7 @@ if task == 'drone':
     x_traj_pid = jnp.array(xs)
     vis_traj(x_traj_pid[None, :], x_traj_pid[None, :], "pid")
 
-exit()
+# exit()
 
 # init trajectory
 rng, rng_x, rng_u = jax.random.split(rng, 3)
