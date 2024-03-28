@@ -22,12 +22,12 @@ n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
 horizon: int = 50
 diffuse_step = 40
-diffuse_substeps = 3000
-batch_size = 128
-saved_batch_size = 4
+diffuse_substeps = 5000
+batch_size = 256    
+saved_batch_size = 2
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(5.0, 0.01, diffuse_substeps) * 2e-6
+langevin_eps_schedule = jnp.linspace(300.0, 0.01, diffuse_substeps) * 2e-6
 # if obstacle == "umaze":
 #     langevin_eps_schedule = (
 #         langevin_eps_schedule * 0.3
@@ -77,7 +77,7 @@ class Params:
     langevin_eps: float = 1.0
     dyn_scale: float = 1.0
     reward_scale: float = 1.0
-    barrier_scale: float = 600.0
+    barrier_scale: float = 2500.0
     final_scale: float = 1.0
 
 
@@ -395,7 +395,7 @@ def update_traj(
     x_traj_new = (
         x_traj
         + eps * grad_x
-        + jnp.sqrt(2 * eps) * jax.random.normal(rng_x, grad_x.shape)
+        + 0.1 *  jnp.sqrt(2 * eps) * jax.random.normal(rng_x, grad_x.shape)
     )
     x_traj_new = x_traj_new.at[0].set(
         params.init_state
@@ -407,7 +407,7 @@ def update_traj(
     u_traj_new = (
         u_traj
         + eps * grad_u
-        + jnp.sqrt(2 * eps) * jax.random.normal(rng_u, grad_u.shape)
+        + 0.1 * jnp.sqrt(2 * eps) * jax.random.normal(rng_u, grad_u.shape)
     )
 
     return x_traj_new, u_traj_new
@@ -539,7 +539,7 @@ elif task == "drone":
     x_traj = x_traj_guess[None, :] + x_traj_noise * jnp.array([2.0, 6.0, jnp.pi,2* 1.0, 6.0, 3.0])
 elif task == "pendulum":
     x_traj = x_traj_noise * jnp.array([jnp.pi, 1.0])
-u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action)) * 0.8 - 0.2
+u_traj = jax.random.normal(rng_u, (batch_size, horizon, n_action)) 
 x_traj = x_traj.at[:, 0].set(params.init_state)
 
 # initialize parameters
@@ -553,8 +553,8 @@ barrier_grad_x_norm = jnp.linalg.norm(barrier_grad_x, axis=-1).mean()
 final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
 params = params.replace(
     dyn_scale = 1.0, 
-    reward_scale = 3e-3, 
-    barrier_scale = 500.0,
+    reward_scale = 1e-3, 
+    barrier_scale = 1500.0,
     final_scale = 150.0,
 )
 jax.debug.print(
@@ -660,27 +660,28 @@ for d_step in range(diffuse_step):
             x_traj_real = jax.vmap(rollout, in_axes=(0, 0, None))(
                 x_traj[:, 0], u_traj, params
             )
-        jax.debug.print(
-            "i = {substep}/{d_step}, var = {noise:.2e}, Dyn = {x:.3e}({x1:.3e}), J = {y:.3e}({y1:.3e}), Bar = {z:.3e}({z1:.3e}), Final = {w:.3e}({w1:.3e})",
-            d_step=d_step,
-            substep=sub_step,
-            noise = noise_var,
-            x=logpd,
-            x1=params.dyn_scale,
-            y=logp_reward,
-            y1=params.reward_scale,
-            z=barrier_value,
-            z1=params.barrier_scale,
-            w=final_value,
-            w1=params.final_scale,
-        )
-        jax.debug.print(
-            "top_value, Dyn = {x:.3e}, J = {y:.3e}, Bar = {z:.3e}, Final = {w:.3e}",
-            x=logpd_top,
-            y=logp_reward_top,
-            z=barrier_value_top,
-            w=final_value_top,
-        )
+            if sub_step % 10 == 9:
+                jax.debug.print(
+                    "i = {substep}/{d_step}, var = {noise:.2e}, Dyn = {x:.3e}({x1:.3e}), J = {y:.3e}({y1:.3e}), Bar = {z:.3e}({z1:.3e}), Final = {w:.3e}({w1:.3e})",
+                    d_step=d_step,
+                    substep=sub_step,
+                    noise = noise_var,
+                    x=logpd,
+                    x1=params.dyn_scale,
+                    y=logp_reward,
+                    y1=params.reward_scale,
+                    z=barrier_value,
+                    z1=params.barrier_scale,
+                    w=final_value,
+                    w1=params.final_scale,
+                )
+                jax.debug.print(
+                    "top_value, Dyn = {x:.3e}, J = {y:.3e}, Bar = {z:.3e}, Final = {w:.3e}",
+                    x=logpd_top,
+                    y=logp_reward_top,
+                    z=barrier_value_top,
+                    w=final_value_top,
+                )
         save_infos.append([x_traj[:saved_batch_size], x_traj_real[:saved_batch_size]])
         barrier = jax.vmap(get_barrier_jit, in_axes=(0, 0, None))(x_traj, u_traj, params).mean()
         barrier_scale = params.barrier_scale + jnp.clip(
