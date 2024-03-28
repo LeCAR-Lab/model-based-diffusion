@@ -60,7 +60,7 @@ class Params:
     init_state: jnp.ndarray = default_array(
         {
             "point": [-1.5, 0.0, 0.0, 0.0], 
-            "drone": [-1.5, 0.0, 0.0, 0.0, 0.0, 0.0], 
+            "drone": [-1.5, 0.0, jnp.pi/2, 0.0, 0.0, 0.0], 
             "pendulum": [0.0, 0.0]
         }[task]
     )
