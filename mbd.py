@@ -20,7 +20,7 @@ if task == 'pendulum':
 # global static parameters
 n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
-horizon: int = 50*2
+horizon: int = 50
 diffuse_step = 40
 diffuse_substeps = 3000
 batch_size = 128
@@ -128,7 +128,7 @@ def get_B_drone(x: jnp.ndarray, params: Params) -> jnp.ndarray:
                 [0.0, 0.0],
                 [jnp.cos(x[2])*3.0, 0.0],
                 [jnp.sin(x[2])*3.0, 0.0],
-                [0.0, 10.0],
+                [0.0, 30.0],
             ]
         )
         * params.dt
@@ -518,7 +518,7 @@ if task == 'drone':
         n = jnp.array([jnp.cos(x[2]), jnp.sin(x[2])])
         thrust = jnp.dot(fd, n)
         thrust = jnp.clip(thrust, -1.0, 1.0)
-        torque = jnp.clip(theta_err*3.0-x[5]*1.0, -1.0, 1.0)
+        torque = jnp.clip(theta_err*1.0-x[5]*0.3, -1.0, 1.0)
         return jnp.array([thrust, torque])
     desired_point_idx = 0
     x = params.init_state
