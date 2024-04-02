@@ -21,13 +21,14 @@ if task == 'pendulum':
 n_state: int = {"point": 4, "drone": 6, "pendulum": 2}[task]
 n_action: int = {"point": 2, "drone": 2, "pendulum": 1}[task]
 horizon: int = 50
-diffuse_step = 40
-diffuse_substeps = 5000
+diffuse_step = 50
+
 batch_size = 256    
 saved_batch_size = 2
 
 # schedule langevin episilon
-langevin_eps_schedule = jnp.linspace(300.0, 0.01, diffuse_substeps) * 2e-6
+diffuse_substeps = 800
+langevin_eps_schedule = jnp.linspace(10.0, 0.005, diffuse_substeps) * 2e-6
 # if obstacle == "umaze":
 #     langevin_eps_schedule = (
 #         langevin_eps_schedule * 0.3
@@ -35,7 +36,7 @@ langevin_eps_schedule = jnp.linspace(300.0, 0.01, diffuse_substeps) * 2e-6
 
 # schedule global noise (perturbation noise)
 # noise_var_init = 1e-2
-noise_var_init = 2e-1
+noise_var_init = 1.0
 noise_var_final = 2e-3
 # noise_var_init = 1e-1
 # noise_var_final = 1e-1
@@ -371,6 +372,7 @@ def update_traj(
     u_traj: jnp.ndarray,
     params: Params,
     rng: chex.PRNGKey,
+    clip_bound: float = 2.0,
 ) -> jnp.ndarray:
     reward_grad_x, reward_grad_u = reward_grad(x_traj, u_traj, params)
 
@@ -386,9 +388,9 @@ def update_traj(
         + barrier_grad_x * params.barrier_scale
         + final_grad_x * params.final_scale
     )
-    grad_x = jnp.clip(grad_x, -2.0, 2.0)
+    grad_x = jnp.clip(grad_x, -clip_bound, clip_bound)
     grad_u = logpd_grad_u * params.dyn_scale + reward_grad_u * params.reward_scale + barrier_grad_u * params.barrier_scale
-    grad_u = jnp.clip(grad_u, -2.0, 2.0)
+    grad_u = jnp.clip(grad_u, -clip_bound, clip_bound)
     eps = params.langevin_eps
     rng, rng_x, rng_u = jax.random.split(rng, 3)
 
@@ -492,6 +494,7 @@ def vis_traj(x_traj, x_traj_real, filename):
     plt.savefig(f"figure/{filename}.png")
     ax2.clear()
     ax.clear()
+    plt.close(fig)
 
 # init params
 params = Params()
@@ -589,7 +592,7 @@ barrier_grad_x_norm = jnp.linalg.norm(barrier_grad_x, axis=-1).mean()
 final_grad_x_norm = jnp.linalg.norm(final_grad_x, axis=-1).mean()
 params = params.replace(
     dyn_scale = 1.0, 
-    reward_scale = 1e-3, 
+    reward_scale = 3e-3, 
     barrier_scale = 1500.0,
     final_scale = 150.0,
 )
@@ -612,23 +615,35 @@ for d_step in range(diffuse_step):
     # schedule noise_var
     barrier_goal = barrier_threshold + 0.02/50*d_step
     noise_var = noise_var_schedule[d_step]
-    if d_step > 1:
-        # diffuse_substeps = 100
-        lagerangian_substeps = 5
+    # if d_step > 1:
+        # diffuse_substeps = diffuse_substeps * 0.8
+        # diffuse_substeps = jnp.clip(diffuse_substeps, 1000, 5000)
+        # start_langevin = 0.1
+        # start_langevin = jnp.clip(start_langevin, 0.1, 300.0)
+        # langevin_eps_schedule = jnp.linspace(start_langevin, 0.01, diffuse_substeps) * 2e-6
     for barrier_step in range(lagerangian_substeps): 
+        params = params.replace(noise_var=noise_var)
         for sub_step in range(diffuse_substeps):
 
             # schedule langevin_eps
             langevin_eps = langevin_eps_schedule[sub_step] * (params.noise_var / 2e-5)
-            if d_step % 1 == 0:
-                langevin_eps = langevin_eps * 0.06
+            
             params = params.replace(langevin_eps=langevin_eps)
 
             # update trajectory
             rng, rng_traj = jax.random.split(rng)
-            x_traj, u_traj = jax.vmap(update_traj_jit, in_axes=(0, 0, None, 0))(
-                x_traj, u_traj, params, jax.random.split(rng, batch_size)
-            )
+            if d_step == 0:
+                x_traj, u_traj = jax.vmap(update_traj_jit, in_axes=(0, 0, None, 0))(
+                    x_traj, u_traj, params, jax.random.split(rng, batch_size)
+                )
+            elif d_step > 0 and sub_step > 100:
+                x_traj, u_traj = jax.vmap(update_traj_jit, in_axes=(0, 0, None, 0, None))(
+                    x_traj, u_traj, params, jax.random.split(rng_traj, batch_size), 0.25
+                )
+            elif d_step > 0 and sub_step <= 100:
+                _, u_traj = jax.vmap(update_traj_jit, in_axes=(0, 0, None, 0, None))(
+                    x_traj, u_traj, params, jax.random.split(rng_traj, batch_size), 0.3
+                )
             logpd_batch = jax.vmap(get_logpd_scan_jit, in_axes=(0, 0, None))(
                 x_traj, u_traj, params
             )
