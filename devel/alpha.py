@@ -2,11 +2,11 @@ from jax import numpy as jnp
 import jax
 from matplotlib import pyplot as plt
 
-T = 20
+T = 60
 
 def get_alpha_bar(t):
     # x = (t / T - 0.5) * 8.0
-    x = (t/T - 1.6)*3.0
+    x = t/T*8.0 - 4.0
     return jax.nn.sigmoid(-x)
 
 ts = jnp.arange(T+1)
@@ -20,4 +20,6 @@ plt.plot(alpha_bars[1:], label='alpha_bar')
 plt.plot(alphas[1:], label='alpha')
 plt.plot(var_yi[1:], label='var_yi')
 plt.legend()
+plt.xlabel('t')
+plt.ylabel('value')
 plt.show()

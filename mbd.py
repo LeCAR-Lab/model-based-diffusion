@@ -365,7 +365,7 @@ def get_logpd_scan(
     x_traj: jnp.ndarray, u_traj: jnp.ndarray, params: Params
 ) -> jnp.ndarray:
     def step(state, input):
-        x_hat, cov_hat, logpd = state
+        x_hat, cov_hat,  logpd = state
         u_prev, x_current = input
         A = get_A(x_hat, params)
         B = get_B(x_hat, params)
