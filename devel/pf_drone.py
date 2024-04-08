@@ -202,6 +202,8 @@ for i in range(1):
     cs = jax.vmap(cost)(xs_mppi)
     plot_dyn(xs_mppi, xs_mppi, f"MPPI_{i}", xs_batch, cs)
 
+exit()
+
 def denoise_traj(ys, us, sigma, key):
     # filter for new trajectory
     us_key, key = jax.random.split(key)

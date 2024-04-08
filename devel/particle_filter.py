@@ -175,7 +175,7 @@ for i in range(1):
     xs_mppi = rollout_traj(jnp.array([-1.0, 0.0])*map_scale, us)
     plot_dyn(xs_mppi, xs_mppi, f"MPPI_{i}", xs_batch[:8])
 
-plt.figure()
+# plt.figure()
 def denoise_traj(ys, us, sigma, key):
     # filter for new trajectory
     # all_moved = jnp.zeros((N), dtype=bool)
@@ -215,11 +215,11 @@ def denoise_traj(ys, us, sigma, key):
 
     w_unnorm = jnp.exp((logps - jnp.max(logps)))
     w = w_unnorm / jnp.sum(w_unnorm, axis=0)
-    plt.hist(w, bins=20)
-    plt.savefig("../figure/w.png")
-    plt.cla()
+    # plt.hist(w, bins=20)
+    # plt.savefig("../figure/w.png")
+    # plt.cla()
 
-    print(f"logpd: {logpd.mean():.2f} \pm {logpd.std():.2f} logpc: {logpc.mean():.2f} \pm {logpc.std():.2f}")
+    # print(f"logpd: {logpd.mean():.2f} \pm {logpd.std():.2f} logpc: {logpc.mean():.2f} \pm {logpc.std():.2f}")
 
     # plot w with histogram
     # plt.hist(w, bins=20)
@@ -251,7 +251,7 @@ us = jnp.diff(ys, axis=0) / dt
 us = jnp.clip(us, -1.0, 1.0)
 # us = jnp.zeros((H, 2))
 
-T = 300
+T = 500
 
 def get_alpha_bar(t):
     # x = (t / T - 0.5) * 8.0
@@ -262,6 +262,7 @@ def get_alpha_bar(t):
 ts = jnp.arange(T + 1)
 alpha_bars = get_alpha_bar(ts)
 alphas = alpha_bars / jnp.roll(alpha_bars, 1)
+denoise_traj_jit = jax.jit(denoise_traj)
 # for (i, var) in enumerate(np.arange(0.1, 0.0, -var_step)):
 for i in range(T, 0, -1):
     alpha_bar_prev = alpha_bars[i - 1]
@@ -273,11 +274,11 @@ for i in range(T, 0, -1):
 
     sigma = jnp.sqrt(var)
     # x|yi
-    xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
+    xs, us, key, xs_batch = denoise_traj_jit(ys, us, sigma, key)
     # us = jnp.diff(ys, axis=0) / dt
     # us = jnp.clip(us, -1.0, 1.0)
-    # if i % 10 == 9:
-    plot_dyn(xs, ys, f"denoise_{T-i}", xs_batch)
+    if i % 20 == 19:
+        plot_dyn(xs, ys, "denoise", xs_batch)
 
     # if var <= var_step:
     #     sigma_ys = jnp.sqrt(var_step)
@@ -292,7 +293,7 @@ for i in range(T, 0, -1):
         jnp.sqrt(alpha) * (1 - alpha_bar_prev) * ys
         + jnp.sqrt(alpha_bar_prev) * (1 - alpha) * xs
     ) / (1 - alpha_bar) + jax.random.normal(ys_key, (H + 1, 2)) * jnp.sqrt(var_cond)
-    print(jnp.sqrt(alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar), jnp.sqrt(alpha_bar_prev) * (1 - alpha) / (1 - alpha_bar), jnp.sqrt(var_cond))
+    # print(jnp.sqrt(alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar), jnp.sqrt(alpha_bar_prev) * (1 - alpha) / (1 - alpha_bar), jnp.sqrt(var_cond))
     ys = ys.at[0, :2].set(jnp.array([-1.0, 0.0])*map_scale)
     ys = ys.at[-1, :2].set(jnp.array([1.0, 0.0])*map_scale)
     # key_yf, key = jax.random.split(key)
