@@ -6,13 +6,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # parameters
-key = jax.random.PRNGKey(2)
+key = jax.random.PRNGKey(1)
 N = 1024  # sampled trajectory number
-H = 20  # horizon
-dt = 0.05
+H = 10  # horizon
+dt = 0.1
 n_plot_samples = 8
 # dynamics parameters
-J = jnp.array([[1.0/16.0, 0.0, 0.0], [0.0, 1.0/16.0, 0.0], [0.0, 0.0, 1.0/4.0]])
+J = jnp.array([[1.0/20.0, 0.0, 0.0], [0.0, 1.0/20.0, 0.0], [0.0, 0.0, 1.0/4.0]])
 J_inv = jnp.linalg.inv(J)
 # desired rotation
 Rd = R.from_euler("xyz", [0.0, 0.0, jnp.pi])
@@ -21,6 +21,12 @@ qd = Rd.as_quat()
 x0 = jnp.array([
     0.0, 0.0, 0.0, 
     0.0, 0.0, 0.0, 1.0,
+    0.0, 0.0, 0.0,
+    0.0, 0.0, 0.0
+])
+xf = jnp.array([
+    0.0, 0.0, 0.0, 
+    0.0, 0.0, 1.0, 0.0,
     0.0, 0.0, 0.0,
     0.0, 0.0, 0.0
 ])
@@ -81,14 +87,17 @@ def cost(x):
     q = x[3:7]
     v = x[7:10]
     w = x[10:]
-    # Rq = R.from_quat(q)
+    Rq = R.from_quat(q)
 
-    # Re = Rd.inv() * Rq
+    Re = Rd.inv() * Rq
+    # convert to axis-angle
+    Rotvec_e = Re.as_rotvec()
     # qe = Re.as_quat()
     # Mat_e = Re.as_matrix()
 
     # c1 = jnp.sum(vee(Mat_e - Mat_e.T)**2 / (1+jnp.trace(Mat_e))) # NOTE: add small value to avoid nan
-    c1 = jnp.sum((q - qd)**2)*0.5
+    # c1 = jnp.sum((q - qd)**2)*0.5
+    c1 = jnp.sum((Rotvec_e/jnp.pi)**2)
     c2 = jnp.sum(w**2)
 
     cost = (c1 + 0.01*c2)
@@ -96,23 +105,30 @@ def cost(x):
     return cost
 
 
-def plot_dyn(xs, ys, name="foo", xss=None, costs = None):
+def plot_dyn(xs, ys, name="foo", xss=None, costs = None, us = None):
     # create 5 subplots
     fig, axs = plt.subplots(1, 5, figsize=(15, 3))
     qxs = xs[:, 3:7]
     qys = ys[:, 3:7]
     colors = ["r", "g", "b", "y"]
     labels = ["x", "y", "z", "w"]
+    if us is not None:
+        for i in range(3):
+            ax = axs[i]
+            ax.plot(us[:, i+1], c = "k", label = "u")
     for i in range(4):
         ax = axs[i]
         # set title
         ax.set_title(f"q_{labels[i]}")
         # plot with red
-        ax.plot(qxs[:, i], c = colors[i])
-        ax.plot(qys[:, i], c = colors[i], linestyle="--")
+        ax.plot(qxs[:, i], c = colors[i], label = "x")
+        ax.plot(qys[:, i], c = colors[i], linestyle="--", label = "y") 
         ax.axhline(qd[i], c = 'k', linestyle="--")
+        ax.legend()
+        ax.set_ylim([-1.0, 1.0])
     if costs is not None:
-        axs[4].plot(costs, label="cost")
+        axs[4].set_title("cost")
+        axs[4].plot(costs)
     if xss is not None:
         for i in range(xss.shape[0]):
             qxs = xss[i, :, 3:7]
@@ -120,7 +136,6 @@ def plot_dyn(xs, ys, name="foo", xss=None, costs = None):
                 ax = axs[j]
                 ax.plot(qxs[:, j], c = colors[j], alpha=0.1)
     # save plot
-    plt.legend()
     plt.savefig(f"../figure/{name}.png")
     plt.close()
 
@@ -146,7 +161,19 @@ def rollout_traj(x0, us):
 
 # get the likelihood of the trajectory
 def get_logpd(ys, xs, sigma):
-    return -0.5 * jnp.mean((((ys - xs) / sigma)[1:] ** 2).sum(axis=1), axis=0)
+    qxs = xs[:, 3:7]
+    wxs = xs[:, 10:]
+    qys = ys[:, 3:7]
+    wys = ys[:, 10:]
+    
+    Rqxs = jax.vmap(R.from_quat)(qxs)
+    Rqys = jax.vmap(R.from_quat)(qys)
+    Rerrs = jax.vmap(lambda Rqy, Rqx: Rqy.inv() * Rqx)(Rqys, Rqxs)
+    Rotvec_errs = jax.vmap(lambda Rerr: Rerr.as_rotvec())(Rerrs)
+    # d1 = jnp.sum(((qxs - qys))**2, axis=1).mean()
+    d1 = jnp.sum((Rotvec_errs/jnp.pi)**2, axis=1).mean()
+    d2 = jnp.sum(((wxs - wys)/7.0)**2, axis=1).mean()
+    return - d1*5.0 - d2*0.0
 
 def get_logpc(xs):
     logpc = - jax.vmap(cost)(xs).mean()
@@ -175,89 +202,74 @@ for i in range(1):
     cs = jax.vmap(cost)(xs_mppi)
     plot_dyn(xs_mppi, xs_mppi, f"MPPI_{i}", xs_batch, cs)
 
-exit()
-
-plt.figure()
 def denoise_traj(ys, us, sigma, key):
     # filter for new trajectory
-    # all_moved = jnp.zeros((N), dtype=bool)
-    # xs_batch = jnp.zeros((N, H+1, 2))
-    # while not all_moved.all():
     us_key, key = jax.random.split(key)
-    us_batch = jnp.clip(us + jax.random.normal(us_key, (N, H, 2)) * sigma * 1.0, -1.0, 1.0)
-    w_us = us_batch - us
-    xs_batch_new = jax.vmap(rollout_traj, in_axes=(None, 0))(
-        jnp.array([-1.0, 0.0]) * map_scale, us_batch
-    )
-    xs_batch = xs_batch_new
-        # all_moved_new = jnp.all(jnp.linalg.norm(jnp.diff(xs_batch_new, axis=1)[:, :1], axis=2) > 1e-3, axis=1)
-        # xs_batch = jnp.where(all_moved_new[:, None, None], xs_batch_new, xs_batch)
-        # all_moved = all_moved_new | all_moved
-        # print(all_moved)
+    us_batch = jnp.clip(us + jax.random.normal(us_key, (N, H, nu)) * sigma * 1.0, -1.0, 1.0)
+    xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(x0, us_batch)
 
-    # rollout the trajectory assume start from the last state
-    # us_inv_key, key = jax.random.split(key)
-    # us_batch_inverse = (
-    #     -jnp.flip(us, axis=0) + jax.random.normal(us_inv_key, (N, H, 2)) * sigma * 1.0
-    # )
-    # us_batch_inverse = jnp.clip(us_batch_inverse, -1.0, 1.0)
-    # xs_batch_inverse = jax.vmap(rollout_traj, in_axes=(None, 0))(
-    #     jnp.array([1.0, 0.0]) * map_scale, us_batch_inverse
-    # )
-    # xs_batch = jnp.concatenate([xs_batch, jnp.flip(xs_batch_inverse, axis=1)], axis=0)
-    # us_batch = jnp.concatenate([us_batch, -jnp.flip(us_batch_inverse, axis=1)], axis=0)
-
-    # logps = jax.vmap(get_logp, in_axes=(None, 0, None, None))(ys, xs_batch, sigma, 0.1)
     logpd = jax.vmap(get_logpd, in_axes=(None, 0, None))(ys, xs_batch, sigma)
     logpc = jax.vmap(get_logpc)(xs_batch)
-    logpu = jax.vmap(get_logpu, in_axes=(0, None))(w_us, sigma)
-    # logps = logpd*15.0 + logpc*0.5
-    # logps = logpd*6.0 + logpc*6.0
-    logps = logpd*8.0 + logpc*8.0 + logpu*0.0
+    logps = logpd*8.0 + logpc*8.0
 
     w_unnorm = jnp.exp((logps - jnp.max(logps)))
     w = w_unnorm / jnp.sum(w_unnorm, axis=0)
-    plt.hist(w, bins=20)
-    plt.savefig("../figure/w.png")
-    plt.cla()
 
-    print(f"logpd: {logpd.mean():.2f} \pm {logpd.std():.2f} logpc: {logpc.mean():.2f} \pm {logpc.std():.2f}")
-
-    # plot w with histogram
-    # plt.hist(w, bins=20)
-    # plt.show()
-    # plt.cla()
+    # print(f"logpd: {logpd.mean():.2f} \pm {logpd.std():.2f} logpc: {logpc.mean():.2f} \pm {logpc.std():.2f}")
 
     us_new = jnp.sum(w[:, None, None] * us_batch, axis=0)
     xs_new = jnp.sum(w[:, None, None] * xs_batch, axis=0)
     return xs_new, us_new, key, xs_batch[:8]
 
 
-us_key, key = jax.random.split(key)
-us = jax.random.normal(us_key, (H, 2)) * 1.0
+# us_key, key = jax.random.split(key)
+# us = jax.random.normal(us_key, (H, nu)) * 1.0
 ys_key, key = jax.random.split(key)
-xs_guess = jnp.linspace(-1.0, 1.0, H + 1)[:, None] * jnp.array([1.0, 0.0]) * map_scale
-ys = jax.random.normal(ys_key, (H + 1, 2)) * 1.0 + xs_guess
-# ys = xs_guess + jnp.array([0.0, 1.5])
-ys = ys.at[0, :2].set(jnp.array([-1.0, 0.0]) * map_scale)
-ys = ys.at[-1, :2].set(jnp.array([1.0, 0.0]) * map_scale)
-# ys = ys.at[1, :2].set(jnp.array([-3.0, 1.3]))
-# ys = ys.at[2, :2].set(jnp.array([0.4, 1.3]))
-# ys = ys.at[1, :2].set(jnp.array([-2.0, 2.0]) * map_scale*0.0)
-# ys = ys.at[2, :2].set(jnp.array([0.0, 2.0]) * map_scale*0.0)
-# ys = ys.at[1, :2].set(jnp.array([0.5, 0.0]))
-# ys = ys.at[2, :2].set(jnp.array([0.5, 0.0]))
-# xs_ref = jnp.array([[-1.0, 0.0], [-2.0, 2.0], [0.0, 2.0], [1.0, 0.0]]) * map_scale
+rpys = jnp.zeros((H+1, 3))
+# H2 = (H+1)//2
+# rpys = rpys.at[:H2, 0].set(jnp.linspace(0.0, jnp.pi, H2))
+# rpys = rpys.at[H2:, 0].set(jnp.linspace(jnp.pi, jnp.pi, H+1-H2))
+# rpys = rpys.at[:H2, 1].set(jnp.linspace(0.0, 0.0, H2))
+# rpys = rpys.at[H2:, 1].set(jnp.linspace(0.0, -jnp.pi, H+1-H2))
+# rpys = rpys.at[:, 0].set(jnp.linspace(0.0, jnp.pi, H+1))
+# rpys = rpys.at[:, 1].set(jnp.linspace(0.0, -jnp.pi, H+1))
+# qs = jax.vmap(lambda rpy: R.from_euler("xyz", rpy).as_quat())(rpys)
+# qdots = jnp.diff(qs, axis=0, prepend=qs[:1]) / dt
+# q_dot = 0.5 * L(q) @ Hmat @ w
+# Lquats = jax.vmap(L)(qs)
+# ws = 2.0 * jax.vmap(lambda Lquats, qdot: jnp.linalg.inv(Lquats) @ qdot)(Lquats, qdots)[:, :3]
+def sample_quat(key):
+    u = jax.random.uniform(key, (3,))
+    q = jnp.array([
+        jnp.sqrt(1 - u[0]) * jnp.sin(2 * jnp.pi * u[1]),
+        jnp.sqrt(1 - u[0]) * jnp.cos(2 * jnp.pi * u[1]),
+        jnp.sqrt(u[0]) * jnp.sin(2 * jnp.pi * u[2]),
+        jnp.sqrt(u[0]) * jnp.cos(2 * jnp.pi * u[2])
+    ])
+    return q
+ys = jnp.zeros((H+1, 13))
+quat_key, key = jax.random.split(key)
+ys = ys.at[:, 3:7].set(jax.vmap(sample_quat)(jax.random.split(quat_key, H+1)))
+ys = ys.at[0].set(x0)
+ys = ys.at[-1].set(xf)
+# ys = ys.at[:, 3:7].set(qs)
+# ys = ys.at[:, 10:].set(ws)
 # set us to ys
-us = jnp.diff(ys, axis=0) / dt
-us = jnp.clip(us, -1.0, 1.0)
-# us = jnp.zeros((H, 2))
+# wdots = jnp.diff(ws, axis=0) / dt
+# torques = jax.vmap(lambda wdot, w: J @ wdot - jnp.cross(J@w, w))(wdots, ws[:-1])
+# torques = jnp.clip(torques, -1.0, 1.0)
+us = jnp.zeros((H, nu))
+# us = us.at[:, 1:].set(torques)
+# us = us.at[:, 1].set(1.0)
+# us = us.at[:, 2].set(1.0)
+xs = rollout_traj(x0, us)
+plot_dyn(xs, ys, "init", costs=jax.vmap(cost)(ys), us=us)
 
-T = 300
+T = 500
 
 def get_alpha_bar(t):
     # x = (t / T - 0.5) * 8.0
-    x = (t/T)*6.0 - 3.0 # from 2.0 to -5.0
+    x = (t/T)*7.0 - 5.0 # from 2.0 to -5.0
     return jax.nn.sigmoid(-x)
 
 
@@ -265,6 +277,7 @@ ts = jnp.arange(T + 1)
 alpha_bars = get_alpha_bar(ts)
 alphas = alpha_bars / jnp.roll(alpha_bars, 1)
 # for (i, var) in enumerate(np.arange(0.1, 0.0, -var_step)):
+denoise_traj_jit = jax.jit(denoise_traj)
 for i in range(T, 0, -1):
     alpha_bar_prev = alpha_bars[i - 1]
     alpha_bar = alpha_bars[i]
@@ -275,27 +288,20 @@ for i in range(T, 0, -1):
 
     sigma = jnp.sqrt(var)
     # x|yi
-    xs, us, key, xs_batch = denoise_traj(ys, us, sigma, key)
-    # us = jnp.diff(ys, axis=0) / dt
-    # us = jnp.clip(us, -1.0, 1.0)
-    # if i % 10 == 9:
-    plot_dyn(xs, ys, f"denoise_{T-i}", xs_batch)
+    xs, us, key, xs_batch = denoise_traj_jit(ys, us, sigma, key)
+    cs = jax.vmap(cost)(xs)
+    if i % 100 == 99:
+        plot_dyn(xs, ys, "denoise", xs_batch, cs, us)
 
-    # if var <= var_step:
-    #     sigma_ys = jnp.sqrt(var_step)
-    # else:
-    #     # sigma_ys = jnp.sqrt(1.0 / (1.0 / var_step + 1.0 / (var - var_step)))
-    #     sigma_ys = jnp.sqrt(var_step)
     # yi-1|yi
     ys_key, key = jax.random.split(key)
-    # ys = xs + (ys-xs)*(var-var_step)/(var) + jax.random.normal(ys_key, (H+1, 2)) * sigma_ys
-    # xs = xs_ref
     ys = (
         jnp.sqrt(alpha) * (1 - alpha_bar_prev) * ys
         + jnp.sqrt(alpha_bar_prev) * (1 - alpha) * xs
-    ) / (1 - alpha_bar) + jax.random.normal(ys_key, (H + 1, 2)) * jnp.sqrt(var_cond)
-    print(jnp.sqrt(alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar), jnp.sqrt(alpha_bar_prev) * (1 - alpha) / (1 - alpha_bar), jnp.sqrt(var_cond))
-    ys = ys.at[0, :2].set(jnp.array([-1.0, 0.0])*map_scale)
-    ys = ys.at[-1, :2].set(jnp.array([1.0, 0.0])*map_scale)
-    # key_yf, key = jax.random.split(key)
-    # ys = ys.at[-1, :2].set((jnp.array([1.0, 0.0])+jax.random.normal(key_yf, (2,))*sigma)*map_scale)
+    ) / (1 - alpha_bar) + jax.random.normal(ys_key, (H + 1, 13)) * jnp.sqrt(var_cond)
+    # print(jnp.sqrt(alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar), jnp.sqrt(alpha_bar_prev) * (1 - alpha) / (1 - alpha_bar), jnp.sqrt(var_cond))
+    ys = ys.at[0].set(x0)
+    ys = ys.at[-1].set(xf)
+    ys = ys.at[:, 3:7].set(jax.vmap(lambda q: q / jnp.linalg.norm(q))(ys[:, 3:7]))
+# save xs
+jnp.save(f"../figure/xs.npy", xs)

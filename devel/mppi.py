@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 
 # parameters
 dt = 0.4
-key = jax.random.PRNGKey(1)
+key = jax.random.PRNGKey(2)
 N = 2048  # sampled trajectory number
 H = 25  # horizon
 
