@@ -210,26 +210,27 @@ key, subkey = jax.random.split(key)
 
 fig, ax = render_scene()
 # load X and U back
-xs_opt = jnp.load("../figure/X.npy")
-us_opt = jnp.load("../figure/U.npy")
+# xs_opt = jnp.load("../figure/X.npy")
+# us_opt = jnp.load("../figure/U.npy")
 
 
 # plot them
-def plot_traj(ax, xs, xs_opt):
+def plot_traj(ax, xs, xs_opt=None):
     ax.clear()
     ax.set_xlim([-2.0, 2.0])
     ax.set_ylim([-2.0, 2.0])
     ax.grid(True)
     ax.set_aspect("equal")
-    ax.plot(xs_opt[:, 0], xs_opt[:, 1], "b--", linewidth=2, alpha=0.5)
-    ax.quiver(
-        xs_opt[:, 0],
-        xs_opt[:, 1],
-        jnp.sin(xs_opt[:, 2]),
-        jnp.cos(xs_opt[:, 2]),
-        range(T + 1),
-        cmap="Blues",
-    )
+    if xs_opt is not None:
+        ax.plot(xs_opt[:, 0], xs_opt[:, 1], "b--", linewidth=2, alpha=0.5)
+        ax.quiver(
+            xs_opt[:, 0],
+            xs_opt[:, 1],
+            jnp.sin(xs_opt[:, 2]),
+            jnp.cos(xs_opt[:, 2]),
+            range(T + 1),
+            cmap="Blues",
+        )
     ax.plot(xs[:, 0], xs[:, 1], "r-", linewidth=2, alpha=0.5)
     ax.quiver(
         xs[:, 0], xs[:, 1], jnp.sin(xs[:, 2]), jnp.cos(xs[:, 2]), range(T), cmap="Reds"
@@ -241,7 +242,7 @@ for i in trange(Ndiff):
     yxs, yus, subkey = update_traj_langevine(yxs, yus, noise_var_schedule[i], subkey)
     xs = unnorm_state(yxs)
 
-    plot_traj(ax, xs, xs_opt)
+    plot_traj(ax, xs, xs_opt=None)
     # update graph
     plt.pause(0.01)
 
