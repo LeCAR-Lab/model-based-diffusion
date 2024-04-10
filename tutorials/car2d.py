@@ -132,13 +132,14 @@ solver.opt.proj_init = False
 
 # Optional X0 guess (must set solver.opt.proj_init = True)
 solver.opt.proj_init = True
-waypoints = jnp.array([x0[:2], jnp.array([1.75, 3.0]), goal_default[:2]])
+waypoints = jnp.array([x0[:2], jnp.array([0.0, 1.0]), goal_default[:2]])
 X0 = jnp.concatenate(
     (
         jnp.linspace(waypoints[0], waypoints[1], int(T // 2)),
         jnp.linspace(waypoints[1], waypoints[2], int(T // 2) + 2)[1:],
     )
 )
+
 # Augment with zeros
 X0 = jnp.hstack((X0, jnp.zeros((T + 1, 2))))
 
