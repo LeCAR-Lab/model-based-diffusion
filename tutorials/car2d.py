@@ -23,8 +23,8 @@ reload(util)
 # global parameters
 nx, nu = (4, 2)
 dt, T = (0.1, 30)
-Ndiff = 30
-Niter = 300
+Ndiff = 32
+Niter = 1000
 x0 = jnp.array([-1.0, 0.0, 0.0, 0.0])
 xT = jnp.array([1.0, 0.0, 0.0, 0.0])
 
@@ -36,7 +36,7 @@ def generate_noise_schedule(init, final, steps):
     return noise_var_schedule
 
 
-noise_var_schedule = generate_noise_schedule(0.1, 1e-4, Ndiff)
+noise_var_schedule = generate_noise_schedule(1.0, 1e-4, Ndiff)
 eps_schedule = jnp.linspace(30.0, 0.01, Niter) * 1e-6
 
 obs = [
@@ -51,7 +51,7 @@ key = jax.random.PRNGKey(0)
 def render_scene():
     # Setup obstacle environment for state constraint
     # world_range = (jnp.array([-0.5, -0.5]), jnp.array([3.5, 3.5]))
-    world_range = (jnp.array([-1.5, -1.5]), jnp.array([1.5, 1.5]))
+    world_range = (jnp.array([-2.0, -2.0]), jnp.array([2.0, 2.0]))
 
     fig = plt.figure(figsize=(6, 6))
     ax = fig.add_subplot(111)
