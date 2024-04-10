@@ -4,12 +4,13 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # parameters
-key = jax.random.PRNGKey(2)
+key = jax.random.PRNGKey(0)
 N = 1024  # sampled trajectory number
 H = 10  # horizon
 map_scale = 0.5
 # dt = 5.1 / H * map_scale
-dt = 10.1 / H * map_scale
+# dt = 10.1 / H * map_scale
+dt = 11.1 / H * map_scale
 
 
 # setup dynamics
@@ -137,8 +138,7 @@ def get_logpc(xs):
     # costs = costs.at[0].set((jnp.linalg.norm(xs[0] - jnp.array([-1.0, 0.0])) ** 2)*100.0)
     dist2goal = jnp.linalg.norm(xs - jnp.array([1.0, 0.0]) * map_scale, axis=1)
     close2goal_cost = jnp.clip(dist2goal/map_scale, 0.0, 1.0) ** 2
-    logpc = -close2goal_cost[-1:].sum()*1.0-dist2goal[1:].mean()*1.0
-    # costs = costs.at[-1].set(jnp.clip(costs[-1], -(1.0/map_scale)**2, 0.0) * 10.0)
+    logpc = -close2goal_cost[-1:].sum()*2.0-dist2goal[1:].mean()*1.0
     # get_x2g = lambda x: jnp.clip(jnp.linalg.norm(x - jnp.array([1.0, 0.0])), 0.0, 1.0) ** 2
     # xs2g = jax.vmap(get_x2g)(xs)
     # logpc = - xs2g.sum()
@@ -153,27 +153,48 @@ def get_logp(ys, xs, sigma, pc_weight=1.0):
     logpc = get_logpc(xs)
     return logpc * pc_weight + logpd * 0.1
 
+def sample_gmm(key, weights, means, sigmas):
+    key, subkey = jax.random.split(key)
+    idx = jax.random.categorical(subkey, jnp.log(weights))
+    key, subkey = jax.random.split(key)
+    return jax.random.normal(subkey, (H, 2)) * sigmas[idx] + means[idx]
 
 # run MPPI
-def mppi_traj(us, key):
-    us_key, key = jax.random.split(key)
-    us_batch = jax.random.normal(us_key, (N, H, 2)) * 1.0 + us
-    us_batch = jnp.clip(us_batch, -1.0, 1.0)
+def mppi_traj(us_batch, key):
+    # us_key, key = jax.random.split(key)
+    # us_batch = jax.random.normal(us_key, (N, H, 2)) * 1.0 + us
+    # us_batch = jnp.clip(us_batch, -1.0, 1.0)
     xs_batch = jax.vmap(rollout_traj, in_axes=(None, 0))(
         jnp.array([-1.0, 0.0])*map_scale, us_batch
     )
-    logpc = jax.vmap(get_logpc)(xs_batch)*8.0
+    logpc = jax.vmap(get_logpc)(xs_batch)*1.0
     w_unnorm = jnp.exp((logpc - jnp.max(logpc)))
     w = w_unnorm / jnp.sum(w_unnorm, axis=0)
-    us = jnp.sum(w[:, None, None] * us_batch, axis=0)
-    return us, key, xs_batch[:8]
+    xs_batch_best = xs_batch[jnp.argmax(w)]
+
+    sigmas = jnp.ones(N) * 0.1
+    means = us_batch
+    key_us, key = jax.random.split(key)
+    us_batch = jax.vmap(sample_gmm, in_axes=(0, None, None, None))(jax.random.split(key_us, N), w, means, sigmas)
+    us_batch = jnp.clip(us_batch, -1.0, 1.0)
+
+    # us = jnp.sum(w[:, None, None] * us_batch, axis=0)
+    # us_batch = jnp.clip(us + jax.random.normal(key, (H, 2)) * 1.0, -1.0, 1.0)
+
+    return us_batch, key, xs_batch, xs_batch_best
 
 
-us = jnp.zeros((H, 2))
-for i in range(1):
-    us, key, xs_batch = mppi_traj(us, key)
-    xs_mppi = rollout_traj(jnp.array([-1.0, 0.0])*map_scale, us)
-    plot_dyn(xs_mppi, xs_mppi, f"MPPI_{i}", xs_batch[:8])
+us_key, key = jax.random.split(key)
+us_batch = jax.random.normal(us_key, (N, H, 2)) * 1.0
+us_batch = jnp.clip(us_batch, -1.0, 1.0)
+# mppi_traj_jit = jax.jit(mppi_traj)
+for i in range(10):
+    us_batch, key, xs_batch, xs_mppi = mppi_traj(us_batch, key)
+    xf_batch = xs_batch[:, -1]
+    xf_reach_goal = jnp.linalg.norm(xf_batch/map_scale - jnp.array([1.0, 0.0]), axis=1) < 1.0
+    # filter out xs_batch that reach the goal
+    # xs_batch = xs_batch[xf_reach_goal]
+    plot_dyn(xs_mppi, xs_mppi, "MPPI", xs_batch[xf_reach_goal])
 
 # plt.figure()
 def denoise_traj(ys, us, sigma, key):
