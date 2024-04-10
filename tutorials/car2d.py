@@ -4,6 +4,10 @@ config.update("jax_enable_x64", True)
 
 import jax.numpy as jnp
 import jax
+from jax import lax
+from flax import struct
+import chex
+from tqdm import trange
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -16,11 +20,33 @@ from trajax.experimental.sqp import shootsqp, util
 reload(shootsqp)
 reload(util)
 
+# global parameters
+nx, nu = (4, 2)
+dt, T = (0.1, 30)
+Ndiff = 30
+Niter = 300
+x0 = jnp.array([-1.0, 0.0, 0.0, 0.0])
+xT = jnp.array([1.0, 0.0, 0.0, 0.0])
+
+
+def generate_noise_schedule(init, final, steps):
+    scale = 8.0
+    noise_var_schedule = jnp.exp(jnp.linspace(scale, 0.0, steps)) / jnp.exp(scale)
+    noise_var_schedule = noise_var_schedule * (init - final) + final
+    return noise_var_schedule
+
+
+noise_var_schedule = generate_noise_schedule(0.1, 1e-4, Ndiff)
+eps_schedule = jnp.linspace(30.0, 0.01, Niter) * 1e-6
+
 obs = [
     (jnp.array([0.0, 0.0]), 0.5),
     # (jnp.array([1, 2.5]), 0.5),
     # (jnp.array([2.5, 2.5]), 0.5),
 ]
+
+key = jax.random.PRNGKey(0)
+
 
 def render_scene():
     # Setup obstacle environment for state constraint
@@ -39,8 +65,6 @@ def render_scene():
     ax.set_aspect("equal")
     return fig, ax
 
-_ = render_scene()
-
 
 # Setup discrete-time dynamics
 def car_ode(x, u, t):
@@ -49,33 +73,38 @@ def car_ode(x, u, t):
     return jnp.array([x[3] * jnp.sin(x[2]), x[3] * jnp.cos(x[2]), x[3] * u[0], u[1]])
 
 
-dt = 0.1
 dynamics = integrators.rk4(car_ode, dt)
 
-# Constants
-n, m, T = (4, 2, 30)
+# Cost function.
+R = jnp.diag(jnp.array([0.2, 0.1]))
+Q_T = jnp.diag(jnp.array([50.0, 50.0, 50.0, 10.0]))
 
 # Indices of state corresponding to S1 sphere constraints
 s1_indices = (2,)
 state_wrap = util.get_s1_wrapper(s1_indices)
 
 
-# Cost function.
-R = jnp.diag(jnp.array([0.2, 0.1]))
-Q_T = jnp.diag(jnp.array([50.0, 50.0, 50.0, 10.0]))
-goal_default = jnp.array([1.0, 0.0, 0.0, 0.0])
-
-
 @jax.jit
-def cost(x, u, t, goal=goal_default):
+def cost(x, u, t):
     stage_cost = dt * jnp.vdot(u, R @ u)
-    delta = state_wrap(x - goal)
+    delta = state_wrap(x - xT)
     term_cost = jnp.vdot(delta, Q_T @ delta)
     return jnp.where(t == T, term_cost, stage_cost)
 
 
 # Control box bounds
 control_bounds = (jnp.array([-jnp.pi / 3.0, -6.0]), jnp.array([jnp.pi / 3.0, 6.0]))
+
+
+def unnorm_control(yu):
+    return (
+        yu * (control_bounds[1] - control_bounds[0]) / 2.0
+        + (control_bounds[1] + control_bounds[0]) / 2.0
+    )
+
+
+def unnorm_state(yx):
+    return yx
 
 
 # Obstacle avoidance constraint function
@@ -96,6 +125,128 @@ def state_constraint(x, t):
     return obs_constraint(pos)
 
 
+# Define filter
+@jax.jit
+def get_logpd(yxs: jnp.ndarray, yus: jnp.ndarray, noise_var: float):
+    def step(state, carry):
+        x_hat, cov_hat, logpd = state
+        yx, yu = carry
+        u = unnorm_control(yu)
+        x = unnorm_state(yx)
+        A = jax.jacfwd(dynamics, argnums=0)(x_hat, u, 0)
+        B = jax.jacfwd(dynamics, argnums=1)(x_hat, u, 0)
+        Q = B @ B.T * noise_var
+        R = jnp.eye(nx) * noise_var
+        x_pred = A @ x_hat + B @ u
+        cov_pred = A @ cov_hat @ A.T + Q
+        K = cov_pred @ jnp.linalg.inv(cov_pred + R)
+        x_hat = x_pred + K @ (yx - x_pred)
+        cov_hat = (jnp.eye(nx) - K) @ cov_pred
+        y_cov_pred = cov_pred + R
+        logpd += -0.5 * (
+            jnp.log(2 * jnp.pi) * nx
+            + jnp.linalg.slogdet(y_cov_pred)[1]
+            + (x - x_pred).T @ jnp.linalg.inv(y_cov_pred) @ (x - x_pred)
+        )
+        return (x_hat, cov_hat, logpd), None
+
+    cov_hat = jnp.eye(nx) * 0.0
+    logpd = 0.0
+    initial_state = (x0, cov_hat, logpd)
+
+    carry = (yxs, yus)
+    (_, _, logpd), _ = lax.scan(step, initial_state, carry)
+    return logpd
+
+
+@jax.jit
+def get_logpj(yxs: jnp.ndarray, yus: jnp.ndarray):
+    xs = unnorm_state(yxs)
+    us = unnorm_control(yus)
+    cs = jax.vmap(cost, in_axes=(0, 0, None))(xs, us, 0.0)
+    return -jnp.sum(cs)
+
+
+@jax.jit
+def update_traj(
+    yxs: jnp.ndarray, yus: jnp.ndarray, noise_var: float, eps: float, key: chex.PRNGKey
+):
+    logpd_grad = jax.grad(get_logpd, argnums=(0, 1))(yxs, yus, noise_var)
+    logpj_grad = jax.grad(get_logpj, argnums=(0, 1))(yxs, yus)
+    yx_grad = logpd_grad[0] + logpj_grad[0]*0.0
+    yu_grad = logpd_grad[1] + logpj_grad[1]*0.0
+
+    key, xkey, ukey = jax.random.split(key, 3)
+    yxs = yxs + eps * yx_grad + jax.random.normal(xkey, yxs.shape) * jnp.sqrt(2 * eps)
+    yus = yus + eps * yu_grad + jax.random.normal(ukey, yus.shape) * jnp.sqrt(2 * eps)
+    yxs = yxs.at[-1].set(xT)
+
+    return yxs, yus, key
+
+
+@jax.jit
+def update_traj_langevine(yxs, yus, noise_var, key):
+    def step(state, carry):
+        yxs, yus, key = state
+        eps = carry
+        yxs, yus, key = update_traj(yxs, yus, noise_var, eps, key)
+        return (yxs, yus, key), None
+
+    (yxs, yus, key), _ = lax.scan(step, (yxs, yus, key), eps_schedule)
+    return yxs, yus, key
+
+
+yxs_guess = jnp.linspace(x0, xT, T)
+yus_guess = jnp.zeros((T, nu))
+key, x_key, u_key = jax.random.split(key, 3)
+yxs = yxs_guess + jax.random.normal(x_key, yxs_guess.shape) * jnp.sqrt(
+    noise_var_schedule[0]
+)
+yus = yus_guess + jax.random.normal(u_key, yus_guess.shape) * jnp.sqrt(
+    noise_var_schedule[0]
+)
+
+key, subkey = jax.random.split(key)
+
+fig, ax = render_scene()
+# load X and U back
+xs_opt = jnp.load("../figure/X.npy")
+us_opt = jnp.load("../figure/U.npy")
+
+
+# plot them
+def plot_traj(ax, xs, xs_opt):
+    ax.clear()
+    ax.set_xlim([-2.0, 2.0])
+    ax.set_ylim([-2.0, 2.0])
+    ax.grid(True)
+    ax.set_aspect("equal")
+    ax.plot(xs_opt[:, 0], xs_opt[:, 1], "b--", linewidth=2, alpha=0.5)
+    ax.quiver(
+        xs_opt[:, 0],
+        xs_opt[:, 1],
+        jnp.sin(xs_opt[:, 2]),
+        jnp.cos(xs_opt[:, 2]),
+        range(T + 1),
+        cmap="Blues",
+    )
+    ax.plot(xs[:, 0], xs[:, 1], "r-", linewidth=2, alpha=0.5)
+    ax.quiver(
+        xs[:, 0], xs[:, 1], jnp.sin(xs[:, 2]), jnp.cos(xs[:, 2]), range(T), cmap="Reds"
+    )
+
+
+# run the simulation
+for i in trange(Ndiff):
+    yxs, yus, subkey = update_traj_langevine(yxs, yus, noise_var_schedule[i], subkey)
+    xs = unnorm_state(yxs)
+
+    plot_traj(ax, xs, xs_opt)
+    # update graph
+    plt.pause(0.01)
+
+exit()
+
 # Define Solver
 solver_options = dict(
     method=shootsqp.SQP_METHOD.SENS,
@@ -111,28 +262,27 @@ solver_options = dict(
     debug=False,
 )
 solver = shootsqp.ShootSQP(
-    n,
-    m,
+    nx,
+    nu,
     T,
     dynamics,
     cost,
     control_bounds,
     state_constraint,
     s1_ind=s1_indices,
-    **solver_options
+    **solver_options,
 )
 
 # Set initial conditions and problem parameters
-# x0 = jnp.zeros((n,))
+# x0 = jnp.zeros((nx,))
 # x0 = jnp.array([0.25, 1.75, 0., 0.])
-x0 = jnp.array([-1.0, 0.0, 0.0, 0.0])
-U0 = jnp.zeros((T, m))
+U0 = jnp.zeros((T, nu))
 X0 = None
 solver.opt.proj_init = False
 
 # Optional X0 guess (must set solver.opt.proj_init = True)
 solver.opt.proj_init = True
-waypoints = jnp.array([x0[:2], jnp.array([0.0, 1.0]), goal_default[:2]])
+waypoints = jnp.array([x0[:2], jnp.array([0.0, 1.0]), xT[:2]])
 X0 = jnp.concatenate(
     (
         jnp.linspace(waypoints[0], waypoints[1], int(T // 2)),
@@ -151,9 +301,7 @@ _ = solver.solve(x0, U0, X0)
 solver.opt.max_iter = 100
 soln = solver.solve(x0, U0, X0)
 
-print(soln.iterations, soln.objective)
-soln.kkt_residuals
-
+print(f"itr: {soln.iterations}, obj: {soln.objective}, kkt: {soln.kkt_residuals}")
 
 plt.rcParams.update({"font.size": 20})
 matplotlib.rcParams["pdf.fonttype"] = 42
@@ -161,6 +309,9 @@ matplotlib.rcParams["ps.fonttype"] = 42
 
 fig, ax = render_scene()
 U, X = soln.primals
+# save U, X for later
+jnp.save("../figure/U.npy", U)
+jnp.save("../figure/X.npy", X)
 ax.plot(X[:, 0], X[:, 1], "r-", linewidth=2)
 
 for t in jnp.arange(0, solver._T + 1, 5):
@@ -176,7 +327,7 @@ for t in jnp.arange(0, solver._T + 1, 5):
 # Start
 ax.add_patch(plt.Circle([x0[0], x0[1]], 0.1, color="g", alpha=0.3))
 # End
-ax.add_patch(plt.Circle([goal_default[0], goal_default[1]], 0.1, color="r", alpha=0.3))
+ax.add_patch(plt.Circle([xT[0], xT[1]], 0.1, color="r", alpha=0.3))
 
 ax.set_aspect("equal")
 plt.show()
