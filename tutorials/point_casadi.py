@@ -6,11 +6,13 @@ import matplotlib.pyplot as plt
 T = 4.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T//dt)  # Number of control intervals
-Ntraj = 10 # Number of trajectories to diffuse
+Ntraj = 8 # Number of trajectories to diffuse
 # obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
-obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
+# obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
+obs_center = np.array([])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
+## 1st order point mass dynamics
 # Q = np.diag([0.5, 0.5])  # Weight matrix for the states
 # R = np.diag([0.1, 0.1])  # Weight matrix for the controls
 # x0 = np.array([-0.5, 0])  # Initial position
@@ -22,23 +24,80 @@ obs_radius = 0.3  # Radius of the obstacle
 # def dynamics(x, u):
 #     return u
 
+## 1st order car dynamics
+# Q = np.diag([1.0, 0.1, 0.1, 0.1])
+# R = np.diag([0.1, 0.1])
+# x0 = np.array([-1.0, 0.0, 0.0, 0.0])
+# xf = np.array([1.0, 0.0, 0.0, 0.0])
+# u_max = np.array([np.pi/3.0, 6.0])
+# u_min = np.array([-np.pi/3.0, -6.0])
+# nx = 4
+# nu = 2
+# def dynamics(x, u):
+#     return ca.vertcat(
+#         x[3] * ca.sin(x[2]), # x_dot
+#         x[3] * ca.cos(x[2]), # y_dot
+#         x[3] * u[0], # theta_dot
+#         u[1] # v_dot
+#     )
+# def stage_cost(x, u):
+#     return ca.mtimes([(x - xf).T, Q, x - xf]) + ca.mtimes([u.T, R, u])
+# terminal_cost = lambda x: stage_cost(x, ca.DM([0.0]))
 
-Q = np.diag([1.0, 0.1, 0.1, 0.1])
-R = np.diag([0.1, 0.1])
-x0 = np.array([-1.0, 0.0, 0.0, 0.0])
-xf = np.array([1.0, 0.0, 0.0, 0.0])
-u_max = np.array([np.pi/3.0, 6.0])
-u_min = np.array([-np.pi/3.0, -6.0])
+## inverted pendulum dynamics
+# task = 'inverted_pendulum'
+# Q = np.diag([1.0, 0.1])
+# R = np.diag([0.1])
+# x0 = np.array([0.0, 0.0])
+# xf = np.array([np.pi, 0.0])
+# u_max = np.array([1.0])
+# u_min = np.array([-1.0])
+# nx = 2
+# nu = 1
+# g = 1.5
+# def dynamics(x, u):
+#     return ca.vertcat(
+#         x[1], # theta_dot
+#         u[0]-g*ca.sin(x[0]) # v_dot
+#     )*3.0
+# def stage_cost(x, u):
+#     x_new = ca.vertcat(ca.cos(x[0]), x[1])
+#     xf_new = ca.vertcat(ca.cos(xf[0]), xf[1])
+#     return ca.mtimes([(x_new - xf_new).T, Q, x_new - xf_new]) + ca.mtimes([u.T, R, u])
+# def terminal_cost(x):
+#     return stage_cost(x, ca.DM([0.0]))*30.0
+
+## acrobot dynamics
+task = 'acrobot'
+Q = np.diag([1.0, 1.0, 0.1, 0.1])
+R = np.diag([0.1])
+x0 = np.array([0.0, 0.0, 0.0, 0.0])
+xf = np.array([np.pi, 0.0, 0.0, 0.0])
+u_max = np.array([1.0])
+u_min = np.array([-1.0])
 nx = 4
-nu = 2
-
+nu = 1
+g = 0.5
 def dynamics(x, u):
+    theta2_dot = (u[0] - ca.sin(x[1])*g*ca.cos(x[0]) - ca.sin(x[1])*ca.cos(x[0])*ca.sin(x[1]))/(1.0 + ca.sin(x[1])**2)
+    theta1_dot = ca.cos(x[1])*theta2_dot - ca.cos(x[0])*ca.sin(x[1])*g
     return ca.vertcat(
-        x[3] * ca.sin(x[2]), # x_dot
-        x[3] * ca.cos(x[2]), # y_dot
-        x[3] * u[0], # theta_dot
-        u[1] # v_dot
-    )
+        x[1], # theta1_dot
+        x[2], # theta2_dot
+        theta1_dot, # theta1_dot_dot
+        theta2_dot # theta2_dot_dot
+    )*3.0
+def stage_cost(x, u):
+    ry0 = 0.5*ca.cos(x[0])
+    ry1 = 0.5*ca.cos(x[0]) + 0.5*ca.cos(x[0]+x[1])
+    x_new = ca.vertcat(ry0, ry1, x[2], x[3])
+    ryf0 = 0.5*ca.cos(xf[0])
+    ryf1 = 0.5*ca.cos(xf[0]) + 0.5*ca.cos(xf[0]+xf[1])
+    xf_new = ca.vertcat(ryf0, ryf1, xf[2], xf[3])
+    return ca.mtimes([(x_new - xf_new).T, Q, x_new - xf_new]) + ca.mtimes([u.T, R, u])
+def terminal_cost(x):
+    return stage_cost(x, ca.DM([0.0]))*100.0
+    
 
 def rk4(dynamics, x, u):
     k1 = dynamics(x, u)
@@ -59,10 +118,11 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
     objective = 0
     for k in range(N):
         # cost function
-        objective += ca.mtimes([(x[:, k] - xf).T, Q, x[:, k] - xf]) + ca.mtimes([u[:, k].T, R, u[:, k]])
+        objective += stage_cost(x[:, k], u[:, k])
         # observation terms
         objective += ca.mtimes([(yxs[:, k] - x[:, k]).T, np.eye(nx), yxs[:, k] - x[:, k]]) / noise_var
         objective += ca.mtimes([(yus[:, k] - u[:, k]).T, np.eye(nu), yus[:, k] - u[:, k]]) / noise_var
+    objective += terminal_cost(x[:, -1])
     opti.minimize(objective)
     
     # Define the dynamic constraints
@@ -73,12 +133,14 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
     
     # Define the initial and final boundary conditions
     opti.subject_to(x[:, 0] == x0)
-    opti.subject_to(x[:, -1] == xf)
+    if task in ['inverted_pendulum', 'acrobot']:
+        pass
+    else:
+        opti.subject_to(x[:, -1] == xf)
     
     # Define the obstacle avoidance constraint
-
-    for k in range(N+1):
-        for i in range(obs_center.shape[0]):
+    for i in range(obs_center.shape[0]):
+        for k in range(N+1):
             opti.subject_to(ca.dot(x[:2, k] - obs_center[i], x[:2, k] - obs_center[i]) >= obs_radius**2)
     
     # Set initial guess
@@ -117,26 +179,55 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
         # ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
-        ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
-        ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
+        # ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
+        # ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(yx[0, :-1], yx[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
+
+        # pendulum plot
+        # ax.scatter(np.arange(N+1), yx[0, :], c=range(N+1), cmap='Reds')
+        # ax.plot(yx[0, :], 'r', alpha=0.3)
+        # ax.plot(yx[1, :], 'r--', alpha=0.1)
+
+        # acrobot plot
+        # ax.scatter(np.arange(N+1), yx[0, :], c=range(N+1), cmap='Reds')
+        # ax.scatter(np.arange(N+1), yx[1, :], c=range(N+1), cmap='Blues')
+        # ax.plot(yx[0, :], 'r', alpha=0.3)
+        # ax.plot(yx[1, :], 'b', alpha=0.3)
+        # ry0 = -np.cos(yx[0, :])
+        # ry1 =-np.cos(yx[0, :]) - np.cos(yx[0, :]+yx[1, :])
+        # rx0 = np.sin(yx[0, :])
+        # rx1 = np.sin(yx[0, :]) + np.sin(yx[0, :]+yx[1, :])
+        # ax.scatter(np.arange(N+1), rx0, c=range(N+1), cmap='Reds')
+        # ax.scatter(np.arange(N+1), rx1, c=range(N+1), cmap='Reds')
+        # ax.scatter(np.arange(N+1), ry0, c=range(N+1), cmap='Reds')
+        # ax.scatter(np.arange(N+1), ry1, c=range(N+1), cmap='Blues')
+        # for k in range(N):
+        #     # get color from Reds depending on the value of k
+        #     ax.plot([0.0, rx0[k]], [0.0, ry0[k]], 'r', alpha=((k/N)*0.8+0.2))
+        #     ax.plot([rx0[k], rx1[k]], [ry0[k], ry1[k]], 'b', alpha=((k/N)*0.8+0.2))
+        # ax.plot(x[0, :], 'b', alpha=1.0)
+        # ax.plot(x[1, :], 'g', alpha=1)
+        # ax.plot(x[2, :], 'r', alpha=1)
+        # ax.plot(x[3, :], 'k', alpha=1)
     ax.set_xlabel('x')
     ax.set_ylabel('y')
     ax.set_xlim(-2, 2)
     ax.set_ylim(-2, 2)
+    # ax.set_ylim(-4, 4)
     # ax.legend()
-    ax.set_aspect('equal')
+    # ax.set_aspect('equal')
     ax.grid(True)
     ax.set_title('Optimized Trajectory')
 
 # Initialize the trajectory
 def generate_xs():
     # xmid = np.array([-1.0, (np.random.uniform(1.5, 2.5))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
-    xmid = np.array([0.0, 0.0, 0.0, 0.0])
-    xs = np.concatenate([
-        np.linspace(x0, xmid, N//2+1).T,
-        np.linspace(xmid, xf, N-N//2).T
-    ], axis=1)
+    # xmid = np.zeros(nx)
+    # xs = np.concatenate([
+    #     np.linspace(x0, xmid, N//2+1).T,
+    #     np.linspace(xmid, xf, N-N//2).T
+    # ], axis=1)
+    xs = np.zeros((nx, N+1))
     return xs
 xss = np.array([generate_xs() for _ in range(Ntraj)])
 us = np.zeros((nu, N))
