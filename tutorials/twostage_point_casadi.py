@@ -3,73 +3,70 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Define the time horizon and number of control intervals
-T = 4.0  # Time horizon
+T = 2.0  # Time horizon
 dt = 0.2  # Time step
 N = int(T//dt)  # Number of control intervals
-Ntraj = 10 # Number of trajectories to diffuse
+Ntraj = 1 # Number of trajectories to diffuse
 Q = np.diag([0.5, 0.5])  # Weight matrix for the states
 R = np.diag([0.1, 0.1])  # Weight matrix for the controls
 x0 = np.array([-0.5, 0])  # Initial position
 xf = np.array([0.5, 0])  # Final position
 u_max = 1.0  # Maximum velocity
-obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
+obs_center = np.array([[0.0, 0.0]])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
-def optimize_trajectory(xs, us, yxs, yus, noise_var):
-    # Define the optimization problem
+def filter_traj(xs, us, yxs, yus, noise_var):
     opti = ca.Opti()
-    
-    # Define the states and controls
-    x = opti.variable(2, N+1)  # Position (x, y)
-    u = opti.variable(2, N)  # Velocity (vx, vy)
-    
-    # Define the objective function
+    x = opti.variable(2, N+1)
+    u = opti.variable(2, N)
     objective = 0
     for k in range(N):
-        # cost function
-        objective += ca.mtimes([(x[:, k] - xf).T, Q, x[:, k] - xf]) + ca.mtimes([u[:, k].T, R, u[:, k]])
-        # observation terms
         objective += ca.mtimes([(yxs[:, k] - x[:, k]).T, np.eye(2), yxs[:, k] - x[:, k]]) / noise_var
         objective += ca.mtimes([(yus[:, k] - u[:, k]).T, np.eye(2), yus[:, k] - u[:, k]]) / noise_var
     opti.minimize(objective)
-    
-    # Define the dynamic constraints
     for k in range(N):
-        opti.subject_to(x[:, k+1] == x[:, k] + dt * u[:, k])  # Dynamics constraint
-        opti.subject_to(u[:, k] <= u_max)  # Maximum velocity constraint
-        opti.subject_to(u[:, k] >= -u_max)  # Minimum velocity constraint
-    
-    # Define the initial and final boundary conditions
+        opti.subject_to(x[:, k+1] == x[:, k] + dt * u[:, k])
+        opti.subject_to(u[:, k] <= u_max)
+        opti.subject_to(u[:, k] >= -u_max)
     opti.subject_to(x[:, 0] == x0)
     opti.subject_to(x[:, -1] == xf)
-    
-    # Define the obstacle avoidance constraint
-
-    for k in range(N+1):
-        for i in range(obs_center.shape[0]):
-            opti.subject_to(ca.dot(x[:, k] - obs_center[i], x[:, k] - obs_center[i]) >= obs_radius**2)
-    
-    # Set initial guess
     opti.set_initial(x, xs)
     opti.set_initial(u, us)
-    
-    # Set the solver options
     p_opts = {"expand": True}
     s_opts = {"max_iter": 1000, "tol": 1e-4}
     opti.solver("ipopt", p_opts, s_opts)
-    
-    # Solve the optimization problem
     sol = opti.solve()
-    
-    # Retrieve the optimized states and controls
     x_opt = sol.value(x)
     u_opt = sol.value(u)
-    
-    # Generate new observations
-    yxs_new = x_opt + np.random.normal(0, np.sqrt(noise_var), (2, N+1))
-    yus_new = u_opt + np.random.normal(0, np.sqrt(noise_var), (2, N))
-    
-    return x_opt, u_opt, yxs_new, yus_new
+    return x_opt, u_opt
+
+def update_obs(xs, us, yxs, yus, noise_var):
+    opti = ca.Opti()
+    yx = opti.variable(2, N+1)
+    yu = opti.variable(2, N)
+    objective = 0
+    for k in range(N):
+        objective += ca.mtimes([(yx[:, k] - xf).T, Q, yx[:, k] - xf]) + ca.mtimes([yu[:, k].T, R, yu[:, k]])
+        objective += ca.mtimes([(yx[:, k] - xs[:, k]).T, np.eye(2), yx[:, k] - xs[:, k]]) / noise_var
+        objective += ca.mtimes([(yu[:, k] - us[:, k]).T, np.eye(2), yu[:, k] - us[:, k]]) / noise_var
+    opti.minimize(objective)
+    for k in range(N+1):
+        for i in range(obs_center.shape[0]):
+            opti.subject_to(ca.dot(yx[:, k] - obs_center[i], yx[:, k] - obs_center[i]) >= obs_radius**2)
+    opti.set_initial(yx, yxs)
+    opti.set_initial(yu, yus)
+    p_opts = {"expand": True}
+    s_opts = {"max_iter": 1000, "tol": 1e-4}
+    opti.solver("ipopt", p_opts, s_opts)
+    sol = opti.solve()
+    yx_opt = sol.value(yx)
+    yu_opt = sol.value(yu)
+    return yx_opt, yu_opt
+
+def optimize_trajectory(xs, us, yxs, yus, noise_var):
+    xs_opt, us_opt = filter_traj(xs, us, yxs, yus, noise_var)
+    yxs_opt, yus_opt = update_obs(xs_opt, us_opt, yxs, yus, noise_var)
+    return xs_opt, us_opt, yxs_opt, yus_opt
 
 def plot_traj(ax, xss, uss, yxss, yuss):
     ax.clear()
