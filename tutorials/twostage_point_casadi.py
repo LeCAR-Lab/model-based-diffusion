@@ -6,13 +6,13 @@ import matplotlib.pyplot as plt
 T = 2.0  # Time horizon
 dt = 0.2  # Time step
 N = int(T//dt)  # Number of control intervals
-Ntraj = 1 # Number of trajectories to diffuse
+Ntraj = 10 # Number of trajectories to diffuse
 Q = np.diag([0.5, 0.5])  # Weight matrix for the states
 R = np.diag([0.1, 0.1])  # Weight matrix for the controls
 x0 = np.array([-0.5, 0])  # Initial position
 xf = np.array([0.5, 0])  # Final position
 u_max = 1.0  # Maximum velocity
-obs_center = np.array([[0.0, 0.0]])  # Center of the obstacle
+obs_center = np.array([[0.0, 0.0], [0.0, 0.5]])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
 def filter_traj(xs, us, yxs, yus, noise_var):
@@ -47,8 +47,9 @@ def update_obs(xs, us, yxs, yus, noise_var):
     objective = 0
     for k in range(N):
         objective += ca.mtimes([(yx[:, k] - xf).T, Q, yx[:, k] - xf]) + ca.mtimes([yu[:, k].T, R, yu[:, k]])
-        objective += ca.mtimes([(yx[:, k] - xs[:, k]).T, np.eye(2), yx[:, k] - xs[:, k]]) / noise_var
         objective += ca.mtimes([(yu[:, k] - us[:, k]).T, np.eye(2), yu[:, k] - us[:, k]]) / noise_var
+    for k in range(N+1):
+        objective += ca.mtimes([(yx[:, k] - xs[:, k]).T, np.eye(2), yx[:, k] - xs[:, k]]) / noise_var
     opti.minimize(objective)
     for k in range(N+1):
         for i in range(obs_center.shape[0]):
@@ -59,8 +60,8 @@ def update_obs(xs, us, yxs, yus, noise_var):
     s_opts = {"max_iter": 1000, "tol": 1e-4}
     opti.solver("ipopt", p_opts, s_opts)
     sol = opti.solve()
-    yx_opt = sol.value(yx)
-    yu_opt = sol.value(yu)
+    yx_opt = sol.value(yx) + np.random.normal(0, np.sqrt(noise_var), (2, N+1))
+    yu_opt = sol.value(yu) + np.random.normal(0, np.sqrt(noise_var), (2, N))
     return yx_opt, yu_opt
 
 def optimize_trajectory(xs, us, yxs, yus, noise_var):
@@ -79,8 +80,8 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         u = uss[j]
         ys = yxss[j]
         yu = yuss[j]
-        # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory')
-        # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
+        # ax.plot(x[0, :], x[1, :], 'b-', label='Optimized Trajectory', alpha=0.1)
+        # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], range(N), cmap="Blues")
         ax.plot(ys[0, :], ys[1, :], 'r-', label='Observations', alpha=0.1)
         ax.quiver(ys[0, :-1], ys[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
     ax.set_xlabel('x')
@@ -94,7 +95,8 @@ def plot_traj(ax, xss, uss, yxss, yuss):
 
 # Initialize the trajectory
 def generate_xs():
-    xmid = np.array([-1.0, (np.random.uniform(1.5, 2.5))*np.sign(np.random.uniform(-1.0, 1.0))])
+    # xmid = np.array([0.0, (np.random.uniform(1.5, 2.5))*np.sign(np.random.uniform(-1.0, 1.0))])
+    xmid = np.array([0.0, 0.0])
     xs = np.concatenate([
         np.linspace(x0, xmid, N//2+1).T,
         np.linspace(xmid, xf, N-N//2).T
