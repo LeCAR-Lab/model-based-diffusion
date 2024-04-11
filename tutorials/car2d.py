@@ -1,6 +1,7 @@
 from jax import config
 
 config.update("jax_enable_x64", True)
+# config.update("jax_debug_nans", True)
 
 import jax.numpy as jnp
 import jax
@@ -24,7 +25,7 @@ reload(util)
 nx, nu = (4, 2)
 dt, T = (0.1, 30)
 Ndiff = 32
-Niter = 1000
+Niter = 10000
 x0 = jnp.array([-1.0, 0.0, 0.0, 0.0])
 xT = jnp.array([1.0, 0.0, 0.0, 0.0])
 
@@ -36,8 +37,9 @@ def generate_noise_schedule(init, final, steps):
     return noise_var_schedule
 
 
-noise_var_schedule = generate_noise_schedule(1.0, 1e-4, Ndiff)
+noise_var_schedule = generate_noise_schedule(2.0, 1e-4, Ndiff)
 eps_schedule = jnp.linspace(30.0, 0.01, Niter) * 1e-6
+# eps_schedule = jnp.linspace(1.0, 1e-3, Niter) * 1e-1
 
 obs = [
     (jnp.array([0.0, 0.0]), 0.5),
@@ -102,7 +104,6 @@ def unnorm_control(yu):
         + (control_bounds[1] + control_bounds[0]) / 2.0
     )
 
-
 def unnorm_state(yx):
     return yx
 
@@ -148,15 +149,19 @@ def get_logpd(yxs: jnp.ndarray, yus: jnp.ndarray, noise_var: float):
             + jnp.linalg.slogdet(y_cov_pred)[1]
             + (x - x_pred).T @ jnp.linalg.inv(y_cov_pred) @ (x - x_pred)
         )
-        return (x_hat, cov_hat, logpd), None
+        return (x_hat, cov_hat, logpd), (x_hat, cov_hat)
 
     cov_hat = jnp.eye(nx) * 0.0
     logpd = 0.0
     initial_state = (x0, cov_hat, logpd)
 
     carry = (yxs, yus)
-    (_, _, logpd), _ = lax.scan(step, initial_state, carry)
-    return logpd
+    (_, _, logpd), (xs_hat, covs_hat) = lax.scan(step, initial_state, carry)
+    info = {
+        "xs_hat": xs_hat,
+        "covs_hat": covs_hat,
+    }
+    return logpd, info
 
 
 @jax.jit
@@ -171,21 +176,21 @@ def get_logpj(yxs: jnp.ndarray, yus: jnp.ndarray):
 def update_traj(
     yxs: jnp.ndarray, yus: jnp.ndarray, noise_var: float, eps: float, key: chex.PRNGKey
 ):
-    logpd_grad = jax.grad(get_logpd, argnums=(0, 1))(yxs, yus, noise_var)
+    logpd_grad, _ = jax.grad(get_logpd, argnums=(0, 1), has_aux=True)(yxs, yus, noise_var)
     logpj_grad = jax.grad(get_logpj, argnums=(0, 1))(yxs, yus)
-    yx_grad = logpd_grad[0] + logpj_grad[0]*0.0
-    yu_grad = logpd_grad[1] + logpj_grad[1]*0.0
+    yx_grad = logpd_grad[0]*3.0 + logpj_grad[0]*0.01
+    yu_grad = logpd_grad[1]*3.0 + logpj_grad[1]*0.01
 
     key, xkey, ukey = jax.random.split(key, 3)
     yxs = yxs + eps * yx_grad + jax.random.normal(xkey, yxs.shape) * jnp.sqrt(2 * eps)
     yus = yus + eps * yu_grad + jax.random.normal(ukey, yus.shape) * jnp.sqrt(2 * eps)
-    yxs = yxs.at[-1].set(xT)
+    # yxs = yxs.at[-1].set(xT)
 
     return yxs, yus, key
 
 
 @jax.jit
-def update_traj_langevine(yxs, yus, noise_var, key):
+def update_traj_stage(yxs, yus, noise_var, key):
     def step(state, carry):
         yxs, yus, key = state
         eps = carry
@@ -206,7 +211,6 @@ yus = yus_guess + jax.random.normal(u_key, yus_guess.shape) * jnp.sqrt(
     noise_var_schedule[0]
 )
 
-key, subkey = jax.random.split(key)
 
 fig, ax = render_scene()
 # load X and U back
@@ -231,20 +235,44 @@ def plot_traj(ax, xs, xs_opt=None):
             range(T + 1),
             cmap="Blues",
         )
+    for ob in obs:
+        ax.add_patch(plt.Circle(ob[0], ob[1], color="k", alpha=0.3))
     ax.plot(xs[:, 0], xs[:, 1], "r-", linewidth=2, alpha=0.5)
     ax.quiver(
         xs[:, 0], xs[:, 1], jnp.sin(xs[:, 2]), jnp.cos(xs[:, 2]), range(T), cmap="Reds"
     )
 
 
+key, diff_key = jax.random.split(key)
 # run the simulation
-for i in trange(Ndiff):
-    yxs, yus, subkey = update_traj_langevine(yxs, yus, noise_var_schedule[i], subkey)
-    xs = unnorm_state(yxs)
+for j in range(Ndiff):
+    yxs, yus, diff_key = update_traj_stage(yxs, yus, noise_var_schedule[j], diff_key)
+    # for i in trange(Niter):
+        # yxs, yus, diff_key = update_traj(yxs, yus, noise_var_schedule[j], eps_schedule[i], diff_key)
+        # logpd, info = get_logpd(yxs, yus, noise_var_schedule[j])
+        # xs = unnorm_state(yxs)
 
-    plot_traj(ax, xs, xs_opt=None)
-    # update graph
-    plt.pause(0.01)
+    if j % 1 == 0:
+        plot_traj(ax, yxs, xs_opt=None)
+        # plot xs_hat
+        # xs_hat = info["xs_hat"]
+        # ax.plot(xs_hat[:, 0], xs_hat[:, 1], "g-", linewidth=2, alpha=0.5)
+        # # plot cov_hat
+        # covs_hat = info["covs_hat"]
+        # for i in range(T):
+        #     cov = covs_hat[i] + noise_var_schedule[j] * jnp.eye(nx)
+        #     w, v = jnp.linalg.eigh(cov)
+        #     angle = jnp.arctan2(v[1, 0], v[0, 0])
+        #     e = matplotlib.patches.Ellipse(
+        #         (xs_hat[i, 0], xs_hat[i, 1]),
+        #         2 * jnp.sqrt(w[0]),
+        #         2 * jnp.sqrt(w[1]),
+        #         angle=jnp.degrees(angle),
+        #         alpha=0.5,
+        #     )
+        #     ax.add_patch(e)
+        # update graph
+        plt.pause(0.01)
 
 exit()
 
