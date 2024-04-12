@@ -6,7 +6,8 @@ import matplotlib.pyplot as plt
 T = 4.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
-Ntraj = 8  # Number of trajectories to diffuse
+Ntraj = 16  # Number of trajectories to diffuse
+Ndiff = 30
 # obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
 obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
 # obs_center = np.array([])  # Center of the obstacle
@@ -112,7 +113,15 @@ def rk4(dynamics, x, u):
     return x + dt / 6 * (k1 + 2 * k2 + 2 * k3 + k4)
 
 
-def optimize_trajectory(xs, us, yxs, yus, noise_var):
+def optimize_trajectory(xs, us, yxs, yus, at_bar, atm1_bar):
+    # Noise related
+    at = at_bar / atm1_bar
+    kt = np.sqrt(at_bar)
+    ktm1_xt = (1-atm1_bar) * np.sqrt(at) / (1-at_bar)
+    ktm1_x0 = (1-at)*np.sqrt(atm1_bar) / (1-at_bar)
+    var_t = 1 - at_bar
+    var_tm1 = (1-at) * (1-np.sqrt(atm1_bar)) / (1-at_bar)
+
     # Define the optimization problem
     opti = ca.Opti()
 
@@ -126,13 +135,15 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
         # cost function
         objective += stage_cost(x[:, k], u[:, k])
         # observation terms
+        err_yx = yxs[:, k] - x[:, k]*kt
+        err_yu = yus[:, k] - u[:, k]*kt
         objective += (
-            ca.mtimes([(yxs[:, k] - x[:, k]).T, np.eye(nx), yxs[:, k] - x[:, k]])
-            / noise_var
+            ca.mtimes([err_yx.T, np.eye(nx), err_yx])
+            / var_t
         )
         objective += (
-            ca.mtimes([(yus[:, k] - u[:, k]).T, np.eye(nu), yus[:, k] - u[:, k]])
-            / noise_var
+            ca.mtimes([err_yu.T, np.eye(nu), err_yu])
+            / var_t
         )
     objective += terminal_cost(x[:, -1])
     opti.minimize(objective)
@@ -175,8 +186,8 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
     u_opt = sol.value(u)
 
     # Generate new observations
-    yxs_new = x_opt + np.random.normal(0, np.sqrt(noise_var), (nx, N + 1))
-    yus_new = u_opt + np.random.normal(0, np.sqrt(noise_var), (nu, N))
+    yxs_new = ktm1_x0 * x_opt + ktm1_xt * yxs + np.random.normal(0, np.sqrt(var_tm1), (nx, N + 1))
+    yus_new = ktm1_x0 * u_opt + ktm1_xt * yus + np.random.normal(0, np.sqrt(var_tm1), (nu, N))
 
     return x_opt, u_opt, yxs_new, yus_new
 
@@ -196,8 +207,8 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         yu = yuss[j]
 
         # car plot
-        ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
-        ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
+        # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
+        # ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
         ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
         ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
@@ -259,18 +270,26 @@ us = np.zeros((nu, N))
 uss = np.tile(us, (Ntraj, 1, 1))
 noise_init = 1.0
 noise_end = 1e-3
-noise_vars = np.exp(np.linspace(np.log(noise_init), np.log(noise_end), 30))
-yxss = np.random.normal(0, np.sqrt(noise_vars[0]), (Ntraj, nx, N + 1))
+noise_vars = np.exp(np.linspace(np.log(noise_init), np.log(noise_end), Ndiff))
+
+# schedle alpha_bar
+alpha_bars = 1 / (1+np.exp(np.linspace(2.0, -5.0, Ndiff+1)))
+alphas = alpha_bars[1:] / alpha_bars[:-1]
+
+
+yxss = np.random.normal(0, np.sqrt(1.0-alpha_bars[0]), (Ntraj, nx, N + 1))
 yxss[:, :, 0] = x0
 yxss[:, :, -1] = xf
-yuss = np.random.normal(0, np.sqrt(noise_vars[0]), (Ntraj, nu, N))
+yuss = np.random.normal(0, np.sqrt(1.0 - alpha_bars[0]), (Ntraj, nu, N))
 
 # Optimize the trajectory
 fig, ax = plt.subplots()
-for i, noise_var in enumerate(noise_vars):
+for i in range(Ndiff):
+    atm1_bar = alpha_bars[i+1]
+    at_bar = alpha_bars[i]
     for j in range(Ntraj):
         xs, us, yxs, yus = optimize_trajectory(
-            xss[j], uss[j], yxss[j], yuss[j], noise_var
+            xss[j], uss[j], yxss[j], yuss[j], at_bar, atm1_bar
         )
         xss[j] = xs
         uss[j] = us
