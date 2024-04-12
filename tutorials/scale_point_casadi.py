@@ -207,10 +207,10 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         yu = yuss[j]
 
         # car plot
-        # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
-        # ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
-        ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
-        ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
+        ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
+        ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
+        # ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
+        # ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
         # ax.quiver(yx[0, :-1], yx[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
 
@@ -259,6 +259,7 @@ def generate_xs():
     #     np.linspace(x0, xmid, N//2+1).T,
     #     np.linspace(xmid, xf, N-N//2).T
     # ], axis=1)
+    # xs = np.random.normal(0, 1.0, (nx, N + 1))
     xs = np.linspace(x0, xf, N + 1).T + np.random.normal(0, 1.0, (nx, N + 1))
     xs[:, 0] = x0
     xs[:, -1] = xf
