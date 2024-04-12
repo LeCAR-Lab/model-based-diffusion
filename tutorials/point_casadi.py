@@ -8,8 +8,8 @@ dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
 Ntraj = 8  # Number of trajectories to diffuse
 # obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
-# obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
-obs_center = np.array([])  # Center of the obstacle
+obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
+# obs_center = np.array([])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
 ## 1st order point mload dynamics
@@ -19,118 +19,35 @@ obs_radius = 0.3  # Radius of the obstacle
 # xf = np.array([0.5, 0])  # Final position
 # u_max = 1.0  # Maximum velocity
 # u_min = -1.0
-# nx = 4
+# nx = 2
 # nu = 2
 # def dynamics(x, u):
 #     return u
-
-## 1st order car dynamics
-# Q = np.diag([1.0, 0.1, 0.1, 0.1])
-# R = np.diag([0.1, 0.1])
-# x0 = np.array([-1.0, 0.0, 0.0, 0.0])
-# xf = np.array([1.0, 0.0, 0.0, 0.0])
-# u_max = np.array([np.pi/3.0, 6.0])
-# u_min = np.array([-np.pi/3.0, -6.0])
-# nx = 4
-# nu = 2
-# def dynamics(x, u):
-#     return ca.vertcat(
-#         x[3] * ca.sin(x[2]), # x_dot
-#         x[3] * ca.cos(x[2]), # y_dot
-#         x[3] * u[0], # theta_dot
-#         u[1] # v_dot
-#     )
 # def stage_cost(x, u):
 #     return ca.mtimes([(x - xf).T, Q, x - xf]) + ca.mtimes([u.T, R, u])
-# terminal_cost = lambda x: stage_cost(x, ca.DM([0.0]))
+# def terminal_cost(x):
+#     return stage_cost(x, ca.DM([0.0]))*10.0
 
-## quad pendulum
-task = "quad_pendulum"
-g = 9.81
-nx = 8
+## 1st order car dynamics
+task = 'car'
+Q = np.diag([1.0, 0.1, 0.1, 0.1])
+R = np.diag([0.1, 0.1])
+x0 = np.array([-1.0, 0.0, 0.0, 0.0])
+xf = np.array([1.0, 0.0, 0.0, 0.0])
+u_max = np.array([1.0, 1.0])
+u_min = np.array([-1.0, -1.0])
+nx = 4
 nu = 2
-mlift = 0.5
-mload = 0.1
-rlift = 0.25
-lrope = 0.5
-Jlift = 0.004
-fric = 0.01
-x0 = np.zeros(nx)
-x0[0] = -3.0
-xf = np.zeros(nx)
-xf[0] = 3.0
-def get_mass_matrix(q, mlift, mload, lrope, Jlift):
-    phi = q[-1]
-
-    M_q = ca.vertcat(
-        ca.horzcat(mlift + mload, 0.0, 0.0, mload * lrope * ca.cos(phi)),
-        ca.horzcat(0.0, mlift + mload, 0.0, mload * lrope * ca.sin(phi)),
-        ca.horzcat(0.0, 0.0, Jlift, 0.0),
-        ca.horzcat(
-            mload * lrope * ca.cos(phi),
-            mload * lrope * ca.sin(phi),
-            0.0,
-            mload * lrope * lrope,
-        ),
-    )
-
-    return M_q
-
-
-def get_mass_inv(q):
-    phi = q[-1]
-
-    a = mlift + mload
-    b = mload * lrope * ca.cos(phi)
-    c = mload * lrope * ca.sin(phi)
-    d = mload * lrope * lrope
-    den = (mload * lrope) ** 2.0 - a * d
-    M_inv = ca.vertcat(
-        ca.horzcat((c * c - a * d) / (a * den), -(b * c) / (a * den), 0.0, b / den),
-        ca.horzcat(-(b * c) / (a * den), (b * b - a * d) / (a * den), 0.0, c / den),
-        ca.horzcat(0.0, 0.0, 1.0 / Jlift, 0.0),
-        ca.horzcat(b / den, c / den, 0.0, -a / den),
-    )
-    return M_inv
-
-
-def kinetic(q, q_dot, get_mass_matrix):
-    return 0.5 * ca.dot(q_dot, get_mass_matrix(q) @ q_dot)
-
-
-def potential(q, mlift, g, mload, lrope):
-    return mlift * g * q[1] + mload * g * (q[1] - lrope * ca.cos(q[-1]))
-
-
-def lag(q, q_dot, get_mass_matrix, mlift, g, mload, lrope):
-    return kinetic(q, q_dot, get_mass_matrix) - potential(q, mlift, g, mload, lrope)
-
-
-def dL_dq(q, q_dot, get_mass_matrix, mlift, g, mload, lrope):
-    return ca.jacobian(lag(q, q_dot, get_mass_matrix, mlift, g, mload, lrope), q)
-
-
 def dynamics(x, u):
-    q = x[:4]
-    q_dot = x[4:]
-    M_q = get_mass_matrix(q)
-    M_dot = ca.jtimes(get_mass_matrix, q, q_dot)
-    M_inv = get_mass_inv(q)
-
-    torque_fric_pole = -fric * (q_dot[-1] - q_dot[-2])
-    F_q = ca.vertcat(
-        -ca.sum1(u) * ca.sin(q[2]),
-        ca.sum1(u) * ca.cos(q[2]),
-        (u[0] - u[1]) * rlift - torque_fric_pole,
-        torque_fric_pole,
+    return ca.vertcat(
+        x[3] * ca.sin(x[2]), # x_dot
+        x[3] * ca.cos(x[2]), # y_dot
+        x[3] * u[0] * np.pi/3, # theta_dot
+        u[1]*6.0 # v_dot
     )
-
-    q_ddot = M_inv @ (
-        F_q + dL_dq(q, q_dot, get_mass_matrix, mlift, g, mload, lrope) - (M_dot @ q_dot)
-    )
-
-    return ca.vertcat(q_dot, q_ddot)
-
+def stage_cost(x, u):
+    return ca.mtimes([(x - xf).T, Q, (x - xf)]) + ca.mtimes([u.T, R, u])
+terminal_cost = lambda x: stage_cost(x, ca.DM([0.0, 0.0]))*10.0
 
 ## inverted pendulum dynamics
 # task = 'inverted_pendulum'
@@ -277,11 +194,13 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         u = uss[j]
         yx = yxss[j]
         yu = yuss[j]
-        # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
+
+        # car plot
+        ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
+        ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
+        ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
+        ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
-        # ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
-        # ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
-        # ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(yx[0, :-1], yx[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
 
         # pendulum plot
@@ -316,20 +235,19 @@ def plot_traj(ax, xss, uss, yxss, yuss):
     ax.set_ylim(-2, 2)
     # ax.set_ylim(-4, 4)
     # ax.legend()
-    # ax.set_aspect('equal')
+    ax.set_aspect('equal')
     ax.grid(True)
     ax.set_title("Optimized Trajectory")
 
 
 # Initialize the trajectory
 def generate_xs():
-    # xmid = np.array([-1.0, (np.random.uniform(1.5, 2.5))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
-    # xmid = np.zeros(nx)
-    # xs = np.concatenate([
-    #     np.linspace(x0, xmid, N//2+1).T,
-    #     np.linspace(xmid, xf, N-N//2).T
-    # ], axis=1)
-    xs = np.zeros((nx, N + 1))
+    xmid = np.array([-1.0, (np.random.uniform(1.0, 2.0))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
+    xmid = np.zeros(nx)
+    xs = np.concatenate([
+        np.linspace(x0, xmid, N//2+1).T,
+        np.linspace(xmid, xf, N-N//2).T
+    ], axis=1)
     return xs
 
 
