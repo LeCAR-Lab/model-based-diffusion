@@ -6,10 +6,11 @@ import matplotlib.pyplot as plt
 T = 4.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
-Ntraj = 8  # Number of trajectories to diffuse
+Ntraj = 1  # Number of trajectories to diffuse
 # obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
-# obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
-obs_center = np.array([])  # Center of the obstacle
+obs_center = np.array([[0.0, -0.15-1.0], [0.0, -0.15], [0.0, -0.15+1.0]])  # Center of the obstacle
+# obs_center = np.array([[0.0, 0.0]])  # Center of the obstacle
+# obs_center = np.array([])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
 ## 1st order point mload dynamics
@@ -43,94 +44,6 @@ obs_radius = 0.3  # Radius of the obstacle
 # def stage_cost(x, u):
 #     return ca.mtimes([(x - xf).T, Q, x - xf]) + ca.mtimes([u.T, R, u])
 # terminal_cost = lambda x: stage_cost(x, ca.DM([0.0]))
-
-## quad pendulum
-task = "quad_pendulum"
-g = 9.81
-nx = 8
-nu = 2
-mlift = 0.5
-mload = 0.1
-rlift = 0.25
-lrope = 0.5
-Jlift = 0.004
-fric = 0.01
-x0 = np.zeros(nx)
-x0[0] = -3.0
-xf = np.zeros(nx)
-xf[0] = 3.0
-def get_mass_matrix(q, mlift, mload, lrope, Jlift):
-    phi = q[-1]
-
-    M_q = ca.vertcat(
-        ca.horzcat(mlift + mload, 0.0, 0.0, mload * lrope * ca.cos(phi)),
-        ca.horzcat(0.0, mlift + mload, 0.0, mload * lrope * ca.sin(phi)),
-        ca.horzcat(0.0, 0.0, Jlift, 0.0),
-        ca.horzcat(
-            mload * lrope * ca.cos(phi),
-            mload * lrope * ca.sin(phi),
-            0.0,
-            mload * lrope * lrope,
-        ),
-    )
-
-    return M_q
-
-
-def get_mass_inv(q):
-    phi = q[-1]
-
-    a = mlift + mload
-    b = mload * lrope * ca.cos(phi)
-    c = mload * lrope * ca.sin(phi)
-    d = mload * lrope * lrope
-    den = (mload * lrope) ** 2.0 - a * d
-    M_inv = ca.vertcat(
-        ca.horzcat((c * c - a * d) / (a * den), -(b * c) / (a * den), 0.0, b / den),
-        ca.horzcat(-(b * c) / (a * den), (b * b - a * d) / (a * den), 0.0, c / den),
-        ca.horzcat(0.0, 0.0, 1.0 / Jlift, 0.0),
-        ca.horzcat(b / den, c / den, 0.0, -a / den),
-    )
-    return M_inv
-
-
-def kinetic(q, q_dot, get_mass_matrix):
-    return 0.5 * ca.dot(q_dot, get_mass_matrix(q) @ q_dot)
-
-
-def potential(q, mlift, g, mload, lrope):
-    return mlift * g * q[1] + mload * g * (q[1] - lrope * ca.cos(q[-1]))
-
-
-def lag(q, q_dot, get_mass_matrix, mlift, g, mload, lrope):
-    return kinetic(q, q_dot, get_mass_matrix) - potential(q, mlift, g, mload, lrope)
-
-
-def dL_dq(q, q_dot, get_mass_matrix, mlift, g, mload, lrope):
-    return ca.jacobian(lag(q, q_dot, get_mass_matrix, mlift, g, mload, lrope), q)
-
-
-def dynamics(x, u):
-    q = x[:4]
-    q_dot = x[4:]
-    M_q = get_mass_matrix(q)
-    M_dot = ca.jtimes(get_mass_matrix, q, q_dot)
-    M_inv = get_mass_inv(q)
-
-    torque_fric_pole = -fric * (q_dot[-1] - q_dot[-2])
-    F_q = ca.vertcat(
-        -ca.sum1(u) * ca.sin(q[2]),
-        ca.sum1(u) * ca.cos(q[2]),
-        (u[0] - u[1]) * rlift - torque_fric_pole,
-        torque_fric_pole,
-    )
-
-    q_ddot = M_inv @ (
-        F_q + dL_dq(q, q_dot, get_mass_matrix, mlift, g, mload, lrope) - (M_dot @ q_dot)
-    )
-
-    return ca.vertcat(q_dot, q_ddot)
-
 
 ## inverted pendulum dynamics
 # task = 'inverted_pendulum'
@@ -186,6 +99,48 @@ def dynamics(x, u):
 # def terminal_cost(x):
 #     return stage_cost(x, ca.DM([0.0]))*100.0
 
+## quadrotor pendulum dynamics
+task = "quadpend"
+nx = 10
+nu = 3
+g = 1.0
+mload = 0.1
+mlift = 0.05
+Jlift = 0.1
+lrope = 0.3
+Q = np.diag([1.0, 1.0, 0.0, 1.0, 1.0, 0.1, 0.1, 0.0, 0.1, 0.1])
+R = np.diag([0.1, 0.1, 0.0])
+x0 = np.array([-1.0, 0.0, 0.0, -1.0, -lrope, 0.0, 0.0, 0.0, 0.0, 0.0])
+xf = np.array([1.0, 0.0, 0.0, 1.0, -lrope, 0.0, 0.0, 0.0, 0.0, 0.0])
+u_max = np.array([3.0*(mload+mlift)*g, 1.0, 100.0])
+u_min = np.array([0.0, -1.0, -100.0])
+u_hover = np.array([(mload+mlift)*g, 0.0, mload*g])
+def dynamics(x, u):
+    rlift = x[:2]
+    theta = x[2]
+    rload = x[3:5]
+    vlift = x[5:7]
+    omega = x[7]
+    vload = x[8:10]
+
+    load2lift = rload - rlift
+    e_load2lift = load2lift / ca.norm_2(load2lift)
+    f_rope = e_load2lift * u[2]
+
+    rlift_dot = vlift
+    theta_dot = omega
+    rload_dot = vload
+    vlift_dot = ca.vertcat(0.0, -g) + ca.vertcat(ca.sin(theta) * u[0], ca.cos(theta) * u[0])/mlift + f_rope/mlift
+    omega_dot = u[1]/Jlift
+    vload_dot = -f_rope/mload + ca.vertcat(0.0, -g)
+
+    return ca.vertcat(rlift_dot, theta_dot, rload_dot, vlift_dot, omega_dot, vload_dot)
+
+def stage_cost(x, u):
+    return ca.mtimes([(x - xf).T, Q, (x - xf)]) + ca.mtimes([(u - u_hover).T, R, (u - u_hover)])
+
+def terminal_cost(x):
+    return stage_cost(x, ca.DM([0.0]))*100.0
 
 def rk4(dynamics, x, u):
     k1 = dynamics(x, u)
@@ -225,10 +180,15 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
         opti.subject_to(x[:, k + 1] == rk4(dynamics, x[:, k], u[:, k]))
         opti.subject_to(u[:, k] <= u_max)  # Maximum velocity constraint
         opti.subject_to(u[:, k] >= u_min)  # Minimum velocity constraint
+        if task == "quadpend":
+            rlift = x[:2, k+1]
+            rload = x[3:5, k+1]
+            opti.subject_to(ca.dot(rload - rlift, rload - rlift) == lrope**2)
+        
 
     # Define the initial and final boundary conditions
     opti.subject_to(x[:, 0] == x0)
-    if task in ["inverted_pendulum", "acrobot"]:
+    if task in ["inverted_pendulum", "acrobot", "quadpend"]:
         pass
     else:
         opti.subject_to(x[:, -1] == xf)
@@ -240,6 +200,12 @@ def optimize_trajectory(xs, us, yxs, yus, noise_var):
                 ca.dot(x[:2, k] - obs_center[i], x[:2, k] - obs_center[i])
                 >= obs_radius**2
             )
+            if task == "quadpend":
+                rload = x[3:5, k]
+                opti.subject_to(
+                    ca.dot(rload - obs_center[i], rload - obs_center[i])
+                    >= obs_radius**2
+                )
 
     # Set initial guess
     opti.set_initial(x, xs)
@@ -277,6 +243,15 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         u = uss[j]
         yx = yxss[j]
         yu = yuss[j]
+
+        # quadpend
+        rlift = yx[:2, :]
+        theta = yx[2, :]
+        rload = yx[3:5, :]
+        ax.quiver(rlift[0, :], rlift[1, :], np.sin(theta), np.cos(theta), range(N+1), cmap="Reds")
+        ax.scatter(rload[0, :], rload[1, :], c=range(N+1), cmap='Blues')
+
+
         # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
         # ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
@@ -316,7 +291,7 @@ def plot_traj(ax, xss, uss, yxss, yuss):
     ax.set_ylim(-2, 2)
     # ax.set_ylim(-4, 4)
     # ax.legend()
-    # ax.set_aspect('equal')
+    ax.set_aspect('equal')
     ax.grid(True)
     ax.set_title("Optimized Trajectory")
 
@@ -329,12 +304,14 @@ def generate_xs():
     #     np.linspace(x0, xmid, N//2+1).T,
     #     np.linspace(xmid, xf, N-N//2).T
     # ], axis=1)
-    xs = np.zeros((nx, N + 1))
+    # xs = np.tile(x0, (N + 1, 1)).T
+    xs = np.linspace(x0, xf, N + 1).T
     return xs
 
 
 xss = np.array([generate_xs() for _ in range(Ntraj)])
-us = np.zeros((nu, N))
+# us = np.zeros((nu, N))
+us = np.tile(u_hover, (N, 1)).T
 uss = np.tile(us, (Ntraj, 1, 1))
 noise_init = 1.0
 noise_end = 1e-3
@@ -360,4 +337,26 @@ for i, noise_var in enumerate(noise_vars):
     plot_traj(ax, xss, uss, yxss, yuss)
     plt.savefig(f"../figure/t_{i}.png")
     plt.pause(0.01)
+
+x = xss[0]
+for i in range(N+1):
+    ax.clear()
+    rlift = x[:2, :]
+    theta = x[2, :]
+    rload = x[3:5, :]
+    for j in range(obs_center.shape[0]):
+        circle = plt.Circle(
+            obs_center[j, :], obs_radius, color="k", fill=True, alpha=0.5
+        )
+        ax.add_artist(circle)
+    ax.plot(rlift[0, :], rlift[1, :], 'r--', alpha=0.3)
+    ax.plot(rload[0, :], rload[1, :], 'b--', alpha=0.3)
+    ax.quiver(rlift[0, i], rlift[1, i], np.sin(theta[i]), np.cos(theta[i]), color='r')
+    ax.scatter(rload[0, i], rload[1, i], color = 'b')
+    ax.plot([rlift[0, i], rload[0, i]], [rlift[1, i], rload[1, i]], 'k')
+    ax.set_xlim(-2, 2)
+    ax.set_ylim(-2, 2)
+    ax.set_aspect('equal')
+    ax.grid(True)
+    plt.savefig(f"../figure/obs_{i}.png")
 plt.show()

@@ -56,10 +56,15 @@ lrope = 0.5
 Jlift = 0.004
 fric = 0.01
 x0 = np.zeros(nx)
-x0[0] = -3.0
+# x0[0] = -3.0
 xf = np.zeros(nx)
-xf[0] = 3.0
-def get_mass_matrix(q, mlift, mload, lrope, Jlift):
+# xf[0] = 3.0
+u_max = 3.0 * mlift * g * np.ones(nu)
+u_min = np.zeros(nu)
+u_hover = (mlift + mload) * g * np.ones(nu) * 0.5
+weights = (0.01, 0.05, 5.)
+Q_T = (10., 10., 1., 1., 1., 1., 1., 1.)
+def get_mass_matrix(q):
     phi = q[-1]
 
     M_q = ca.vertcat(
@@ -113,8 +118,7 @@ def dL_dq(q, q_dot, get_mass_matrix, mlift, g, mload, lrope):
 def dynamics(x, u):
     q = x[:4]
     q_dot = x[4:]
-    M_q = get_mass_matrix(q)
-    M_dot = ca.jtimes(get_mass_matrix, q, q_dot)
+    M_dot = ca.jacobian(get_mass_matrix(q), q) @ q_dot
     M_inv = get_mass_inv(q)
 
     torque_fric_pole = -fric * (q_dot[-1] - q_dot[-2])
@@ -130,6 +134,18 @@ def dynamics(x, u):
     )
 
     return ca.vertcat(q_dot, q_ddot)
+
+def stage_cost(x, u):
+    delta = x - xf
+    pos_cost = ca.dot(delta[:3], delta[:3]) + (1. + ca.cos(x[3]))
+    ctrl_cost = ca.dot(u - u_hover, u - u_hover)
+    stage_cost = weights[0] * pos_cost + weights[1] * ctrl_cost
+    return stage_cost
+
+def terminal_cost(x):
+    delta = x - xf
+    term_cost = weights[2] * ca.dot(delta, ca.vertcat(*[Q_T[i] * delta[i] for i in range(nx)]))
+    return term_cost
 
 
 ## inverted pendulum dynamics
