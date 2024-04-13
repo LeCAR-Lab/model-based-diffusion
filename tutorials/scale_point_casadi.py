@@ -209,8 +209,8 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         # car plot
         ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
         ax.quiver(x[0, 1:], x[1, 1:], np.sin(x[2, 1:]), np.cos(x[2, 1:]), range(N), cmap="Blues")
-        # ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
-        # ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
+        ax.plot(yx[0, :], yx[1, :], 'r-', label='Observations', alpha=0.1)
+        ax.quiver(yx[0, 1:], x[1, 1:], np.sin(yx[2, 1:]), np.cos(yx[2, 1:]), range(N), cmap="Reds")
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
         # ax.quiver(yx[0, :-1], yx[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
 
