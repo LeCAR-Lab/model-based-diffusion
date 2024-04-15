@@ -60,7 +60,7 @@ dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
 R = np.diag([0.1, 0.3])
 x0 = np.array([-0.6, 0.0, np.pi/2, 0.0])  # x, y, theta, p
-xf = np.array([0.6, 0.0, 0.0, 0.0])
+xf = np.array([-0.6, 0.0, 0.0, 0.0])
 u_max = np.array([1.0, 1.0])
 u_min = np.array([-1.0, -1.0])
 
@@ -68,7 +68,7 @@ def dynamics(x, u):
     theta = x[2]
     p = x[3]
     p_dot = u[0] * 0.3
-    k = p / abar
+    k = p / abar * 0.5
     rbar_dot_norm = u[1] * 1.0 / (1+ca.fabs(k))
     rbar_dot = rbar_dot_norm * ca.vertcat(-ca.sin(theta), ca.cos(theta))
     theta_dot = k * rbar_dot_norm / abar
@@ -378,23 +378,23 @@ for i in range(Ndiff):
     plot_traj(ax, xss, uss, yxss, yuss)
     plt.savefig(f"../figure/t_{i}.png")
     plt.pause(0.01)
-# plt.show()
+plt.show()
 
-xs = xss[0]
-for i in range(N+1):
-    ax.clear()
-    # plot bar
-    rbar = xs[:2, i]
-    theta = xs[2, i]
-    p = xs[3, i]
-    point = get_point(xs[:, i])
-    bar_end1, bar_end2 = get_bar_ends(xs[:, i])
-    bar_final_end1, bar_final_end2 = get_bar_ends(xf)
-    ax.plot([bar_end1[0], bar_end2[0]], [bar_end1[1], bar_end2[1]], "b", linewidth=5)
-    ax.plot(point[0], point[1], "ro")
-    ax.plot([bar_final_end1[0], bar_final_end2[0]], [bar_final_end1[1], bar_final_end2[1]], "r--", linewidth=5)
-    ax.set_xlim(-0.8, 0.8)
-    ax.set_ylim(-0.8, 0.8)
-    ax.grid(True)
-    ax.set_aspect("equal")
-    plt.savefig(f"../figure/obs_{i}.png")
+# xs = xss[0]
+# for i in range(N+1):
+#     ax.clear()
+#     # plot bar
+#     rbar = xs[:2, i]
+#     theta = xs[2, i]
+#     p = xs[3, i]
+#     point = get_point(xs[:, i])
+#     bar_end1, bar_end2 = get_bar_ends(xs[:, i])
+#     bar_final_end1, bar_final_end2 = get_bar_ends(xf)
+#     ax.plot([bar_end1[0], bar_end2[0]], [bar_end1[1], bar_end2[1]], "b", linewidth=5)
+#     ax.plot(point[0], point[1], "ro")
+#     ax.plot([bar_final_end1[0], bar_final_end2[0]], [bar_final_end1[1], bar_final_end2[1]], "r--", linewidth=5)
+#     ax.set_xlim(-0.8, 0.8)
+#     ax.set_ylim(-0.8, 0.8)
+#     ax.grid(True)
+#     ax.set_aspect("equal")
+#     plt.savefig(f"../figure/obs_{i}.png")
