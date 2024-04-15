@@ -7,7 +7,7 @@ T = 4.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
 Ntraj = 1  # Number of trajectories to diffuse
-Ndiff = 30
+Ndiff = 1
 # obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
 # obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
 obs_center = np.array([])  # Center of the obstacle
@@ -55,19 +55,21 @@ task = 'push_bar'
 abar = 0.2
 nx = 4
 nu = 2
+T = 5.0  # Time horizon
+dt = 0.1  # Time step
+N = int(T // dt)  # Number of control intervals
 R = np.diag([0.1, 0.3])
-x0 = np.array([-0.4, 0.0, 0.0, -0.2])  # x, y, theta, p
-xf = np.array([0.4, 0.0, np.pi/2, 0.0])
-u_max = np.array([1.0, 1.0])*np.inf
-u_min = np.array([-1.0, -1.0])*np.inf
-# u_min[0] = 0.0
+x0 = np.array([-0.6, 0.0, np.pi/2, 0.0])  # x, y, theta, p
+xf = np.array([0.6, 0.0, 0.0, 0.0])
+u_max = np.array([1.0, 1.0])
+u_min = np.array([-1.0, -1.0])
 
 def dynamics(x, u):
     theta = x[2]
     p = x[3]
-    p_dot = u[0] * 1.0
+    p_dot = u[0] * 0.3
     k = p / abar
-    rbar_dot_norm = u[1] * 3.0 / (1+ca.fabs(k))
+    rbar_dot_norm = u[1] * 1.0 / (1+ca.fabs(k))
     rbar_dot = rbar_dot_norm * ca.vertcat(-ca.sin(theta), ca.cos(theta))
     theta_dot = k * rbar_dot_norm / abar
     return ca.vertcat(rbar_dot, theta_dot, p_dot)
@@ -76,10 +78,10 @@ def stage_cost(x, u):
     theta_err = x[2] - xf[2]
     sin_theta_err = ca.sin(theta_err)
     rbar_err = x[0:2] - xf[0:2]
-    return ca.mtimes([theta_err.T, theta_err]) + ca.mtimes([rbar_err.T, rbar_err]) + ca.mtimes([u.T, R, u])
+    return ca.mtimes([sin_theta_err.T, sin_theta_err]) + ca.mtimes([rbar_err.T, rbar_err]) + ca.mtimes([u.T, R, u])
 
 def terminal_cost(x):
-    return stage_cost(x, ca.DM([0.0, 0.0]))*100.0
+    return stage_cost(x, ca.DM([0.0, 0.0]))*30.0
 
 def get_bar_ends(x):
     rbar = x[0:2]
@@ -179,17 +181,17 @@ def optimize_trajectory(xs, us, yxs, yus, at_bar, atm1_bar):
         # cost function
         objective += stage_cost(x[:, k], u[:, k])
         # observation terms
-        # err_yx = yxs[:, k] - x[:, k]*kt
-        # err_yu = yus[:, k] - u[:, k]*kt
-        # objective += (
-        #     ca.mtimes([err_yx.T, np.eye(nx), err_yx])
-        #     / var_t
-        # )
-        # objective += (
-        #     ca.mtimes([err_yu.T, np.eye(nu), err_yu])
-        #     / var_t
-        # )
-    # objective += terminal_cost(x[:, -1])
+        err_yx = yxs[:, k] - x[:, k]*kt
+        err_yu = yus[:, k] - u[:, k]*kt
+        objective += (
+            ca.mtimes([err_yx.T, np.eye(nx), err_yx])
+            / var_t
+        )
+        objective += (
+            ca.mtimes([err_yu.T, np.eye(nu), err_yu])
+            / var_t
+        )
+    objective += terminal_cost(x[:, -1])
     opti.minimize(objective)
 
     # Define the dynamic constraints
@@ -197,9 +199,9 @@ def optimize_trajectory(xs, us, yxs, yus, at_bar, atm1_bar):
         opti.subject_to(x[:, k + 1] == rk4(dynamics, x[:, k], u[:, k]))
         opti.subject_to(u[:, k] <= u_max)  # Maximum velocity constraint
         opti.subject_to(u[:, k] >= u_min)  # Minimum velocity constraint
-    # if task == "push_bar":
-    #     opti.subject_to(x[3, :] >= -abar)
-    #     opti.subject_to(x[3, :] <= abar)
+    if task == "push_bar":
+        opti.subject_to(x[3, :] >= -abar)
+        opti.subject_to(x[3, :] <= abar)
 
     # Define the initial and final boundary conditions
     opti.subject_to(x[:, 0] == x0)
@@ -222,12 +224,19 @@ def optimize_trajectory(xs, us, yxs, yus, at_bar, atm1_bar):
 
     # Set the solver options
     p_opts = {"expand": True}
-    s_opts = {"max_iter": 10000, "tol": 1e-4}
+    s_opts = {"max_iter": 1000, "tol": 1e-4, "print_level": 0}
     opti.solver("ipopt", p_opts, s_opts)
 
     # Solve the optimization problem
-    sol = opti.solve()
+    try:
+        sol = opti.solve()        
+    except RuntimeError as e:
+        print("Failed to solve the optimization problem")
+        if "Maximum_Iterations_Exceeded" in str(e):
+            print("Maximum iterations exceeded")
+            sol = opti.debug
 
+    # sol = opti.solve()
     # Retrieve the optimized states and controls
     x_opt = sol.value(x)
     u_opt = sol.value(u)
@@ -258,15 +267,16 @@ def plot_traj(ax, xss, uss, yxss, yuss):
             x_t = x[:, t]
             point = get_point(x_t)
             bar_end1, bar_end2 = get_bar_ends(x_t)
-            alpha = t / x.shape[1] * 0.5 + 0.5
+            alpha = t / x.shape[1] * 0.9 + 0.1
             ax.plot(
                 [bar_end1[0], bar_end2[0]],
                 [bar_end1[1], bar_end2[1]],
                 "b",
-                linewidth=5,
+                linewidth=2,
                 alpha=alpha,
             )
             ax.plot(point[0], point[1], "ro", alpha=alpha)
+        ax.plot(x[0, :], x[1, :], "g-", alpha=1.0)
 
         # car plot
         # ax.plot(x[0, :], x[1, :], 'b-o', label='Optimized Trajectory', alpha=0.1)
@@ -325,7 +335,7 @@ def generate_xs():
     xs = np.linspace(x0, xf, N + 1).T + np.random.normal(0, 1.0, (nx, N + 1))
     if task == "push_bar":
         xs[:2, :] = np.linspace(x0[:2], xf[:2], N + 1).T
-        xs[2, :] = np.linspace(x0[2], xf[2], N + 1)
+        xs[2, :] = 0.0
         xs[3, :] = 0.0
     xs[:, 0] = x0
     xs[:, -1] = xf
@@ -335,13 +345,13 @@ def generate_xs():
 xss = np.array([generate_xs() for _ in range(Ntraj)])
 us = np.zeros((nu, N))
 uss = np.tile(us, (Ntraj, 1, 1))
-# uss = uss + np.clip(np.random.normal(0, 1.0, (Ntraj, nu, N)), -1.0, 1.0)
+uss = uss + np.clip(np.random.normal(0, 1.0, (Ntraj, nu, N)), -1.0, 1.0)
 noise_init = 1.0
 noise_end = 1e-3
 noise_vars = np.exp(np.linspace(np.log(noise_init), np.log(noise_end), Ndiff))
 
 # schedle alpha_bar
-alpha_bars = 1 / (1+np.exp(np.linspace(2.0, -5.0, Ndiff+1)))
+alpha_bars = 1 / (1+np.exp(np.linspace(1.0, -1.0, Ndiff+1)))
 alphas = alpha_bars[1:] / alpha_bars[:-1]
 
 
@@ -367,6 +377,24 @@ for i in range(Ndiff):
     # Plot the optimized trajectory
     plot_traj(ax, xss, uss, yxss, yuss)
     plt.savefig(f"../figure/t_{i}.png")
-    plt.show()
     plt.pause(0.01)
-plt.show()
+# plt.show()
+
+xs = xss[0]
+for i in range(N+1):
+    ax.clear()
+    # plot bar
+    rbar = xs[:2, i]
+    theta = xs[2, i]
+    p = xs[3, i]
+    point = get_point(xs[:, i])
+    bar_end1, bar_end2 = get_bar_ends(xs[:, i])
+    bar_final_end1, bar_final_end2 = get_bar_ends(xf)
+    ax.plot([bar_end1[0], bar_end2[0]], [bar_end1[1], bar_end2[1]], "b", linewidth=5)
+    ax.plot(point[0], point[1], "ro")
+    ax.plot([bar_final_end1[0], bar_final_end2[0]], [bar_final_end1[1], bar_final_end2[1]], "r--", linewidth=5)
+    ax.set_xlim(-0.8, 0.8)
+    ax.set_ylim(-0.8, 0.8)
+    ax.grid(True)
+    ax.set_aspect("equal")
+    plt.savefig(f"../figure/obs_{i}.png")
