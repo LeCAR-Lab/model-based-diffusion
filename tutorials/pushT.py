@@ -21,7 +21,7 @@ scene = mjcf.loads(
         </body>
 
         <body name="box" pos="0.0 0 0.0">
-            <geom name="box_geom" type="box" size="0.3 0.1 0.1" rgba="0 0 1 1" friction="1 0.001 0.01" mass="0.1"/>
+            <geom name="box_geom" type="box" size="0.3 0.1 0.1" rgba="0 0 1 1" friction="1 0.01 0.01" mass="0.1"/>
             <joint name="box_x" type="slide" axis="1 0 0" limited="true" range="-2 2"/>
             <joint name="box_y" type="slide" axis="0 1 0" limited="true" range="-2 2"/>
             <joint name="box_z_rot" type="hinge" axis="0 0 1" limited="true" range="-3.14159 3.14159" damping="0.1"/>
@@ -59,4 +59,4 @@ state = jax.jit(pipeline.init)(scene, init_q, jnp.zeros(scene.qd_size()))
 for _ in range(100):
     state = jax.jit(pipeline.step)(scene, state, jnp.array([0.0, 1.0]))
     visualize(ax, state.q)
-    plt.pause(0.5)
+    plt.pause(0.1)
