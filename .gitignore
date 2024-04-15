@@ -170,3 +170,5 @@ runs/
 
 .DS_Store
 *.pdf
+*.zip
+*.ckpt
