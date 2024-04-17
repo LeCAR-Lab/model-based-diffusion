@@ -3,14 +3,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Define the time horizon and number of control intervals
-T = 4.0  # Time horizon
+T = 6.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
-Ntraj = 16  # Number of trajectories to diffuse
+Ntraj = 8  # Number of trajectories to diffuse
 Ndiff = 30
-# obs_center = np.array([[0.0, 0.0], [0.0, 0.5], [0.0, -0.5], [-0.5, -0.5], [-0.5, 0.5]])  # Center of the obstacle
 obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
-# obs_center = np.array([])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
 
@@ -87,10 +85,7 @@ def optimize_trajectory(xs, us, yxs, yus, at_bar, atm1_bar):
 
     # Define the initial and final boundary conditions
     opti.subject_to(x[:, 0] == x0)
-    if task in ["inverted_pendulum", "acrobot"]:
-        pass
-    else:
-        opti.subject_to(x[:, -1] == xf)
+    opti.subject_to(x[:, -1] == xf)
 
     # Define the obstacle avoidance constraint
     for i in range(obs_center.shape[0]):
@@ -138,65 +133,37 @@ def plot_traj(ax, xss, uss, yxss, yuss):
         )
         ax.add_artist(circle)
     for j in range(Ntraj):
-        x = xss[j]
-        u = uss[j]
-        yx = yxss[j]
-        yu = yuss[j]
+        xs = xss[j]
+        us = uss[j]
+        yxs = yxss[j]
+        yus = yuss[j]
 
         # car plot
-        ax.plot(x[0, :], x[1, :], "b-o", label="Optimized Trajectory", alpha=0.1)
+        ax.plot(xs[0, :], xs[1, :], "b-o", label="Optimized Trajectory", alpha=0.1)
         ax.quiver(
-            x[0, 1:],
-            x[1, 1:],
-            np.sin(x[2, 1:]),
-            np.cos(x[2, 1:]),
+            xs[0, 1:],
+            xs[1, 1:],
+            np.sin(xs[2, 1:]),
+            np.cos(xs[2, 1:]),
             range(N),
             cmap="Blues",
         )
-        ax.plot(yx[0, :], yx[1, :], "r-", label="Observations", alpha=0.1)
+        ax.plot(yxs[0, :], yxs[1, :], "r-", label="Observations", alpha=0.1)
         ax.quiver(
-            yx[0, 1:],
-            x[1, 1:],
-            np.sin(yx[2, 1:]),
-            np.cos(yx[2, 1:]),
+            yxs[0, 1:],
+            xs[1, 1:],
+            np.sin(yxs[2, 1:]),
+            np.cos(yxs[2, 1:]),
             range(N),
             cmap="Reds",
         )
         # ax.quiver(x[0, 1:], x[1, 1:], u[0, :], u[1, :], color='b')
         # ax.quiver(yx[0, :-1], yx[1, :-1], yu[0, :], yu[1, :], range(N), cmap="Reds")
 
-        # pendulum plot
-        # ax.scatter(np.arange(N+1), yx[0, :], c=range(N+1), cmap='Reds')
-        # ax.plot(yx[0, :], 'r', alpha=0.3)
-        # ax.plot(yx[1, :], 'r--', alpha=0.1)
-
-        # acrobot plot
-        # ax.scatter(np.arange(N+1), yx[0, :], c=range(N+1), cmap='Reds')
-        # ax.scatter(np.arange(N+1), yx[1, :], c=range(N+1), cmap='Blues')
-        # ax.plot(yx[0, :], 'r', alpha=0.3)
-        # ax.plot(yx[1, :], 'b', alpha=0.3)
-        # ry0 = -np.cos(yx[0, :])
-        # ry1 =-np.cos(yx[0, :]) - np.cos(yx[0, :]+yx[1, :])
-        # rx0 = np.sin(yx[0, :])
-        # rx1 = np.sin(yx[0, :]) + np.sin(yx[0, :]+yx[1, :])
-        # ax.scatter(np.arange(N+1), rx0, c=range(N+1), cmap='Reds')
-        # ax.scatter(np.arange(N+1), rx1, c=range(N+1), cmap='Reds')
-        # ax.scatter(np.arange(N+1), ry0, c=range(N+1), cmap='Reds')
-        # ax.scatter(np.arange(N+1), ry1, c=range(N+1), cmap='Blues')
-        # for k in range(N):
-        #     # get color from Reds depending on the value of k
-        #     ax.plot([0.0, rx0[k]], [0.0, ry0[k]], 'r', alpha=((k/N)*0.8+0.2))
-        #     ax.plot([rx0[k], rx1[k]], [ry0[k], ry1[k]], 'b', alpha=((k/N)*0.8+0.2))
-        # ax.plot(x[0, :], 'b', alpha=1.0)
-        # ax.plot(x[1, :], 'g', alpha=1)
-        # ax.plot(x[2, :], 'r', alpha=1)
-        # ax.plot(x[3, :], 'k', alpha=1)
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     ax.set_xlim(-2, 2)
     ax.set_ylim(-2, 2)
-    # ax.set_ylim(-4, 4)
-    # ax.legend()
     ax.set_aspect("equal")
     ax.grid(True)
     ax.set_title("Optimized Trajectory")
@@ -204,19 +171,16 @@ def plot_traj(ax, xss, uss, yxss, yuss):
 
 # Initialize the trajectory
 def generate_xs():
-    # xmid = np.array([0.0, (np.random.uniform(1.0, 2.0))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
-    # xmid = np.zeros(nx)
-    # xs = np.concatenate([
-    #     np.linspace(x0, xmid, N//2+1).T,
-    #     np.linspace(xmid, xf, N-N//2).T
-    # ], axis=1)
-    # xs = np.random.normal(0, 1.0, (nx, N + 1))
-    xs = np.linspace(x0, xf, N + 1).T + np.random.normal(0, 1.0, (nx, N + 1))
-    xs[:, 0] = x0
-    xs[:, -1] = xf
+    xmid = np.array([0.0, (np.random.uniform(1.0, 1.5))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
+    xmid = np.zeros(nx)
+    xs = np.concatenate([
+        np.linspace(x0, xmid, N//2+1).T,
+        np.linspace(xmid, xf, N-N//2).T
+    ], axis=1)
+    # xs = xs + np.random.normal(0, 0.1, xs.shape)
     return xs
 
-
+# Generate the initial trajectory
 xss = np.array([generate_xs() for _ in range(Ntraj)])
 us = np.zeros((nu, N))
 uss = np.tile(us, (Ntraj, 1, 1))
@@ -224,11 +188,11 @@ noise_init = 1.0
 noise_end = 1e-3
 noise_vars = np.exp(np.linspace(np.log(noise_init), np.log(noise_end), Ndiff))
 
-# schedle alpha_bar
+# schedule alpha_bar
 alpha_bars = 1 / (1 + np.exp(np.linspace(2.0, -5.0, Ndiff + 1)))
 alphas = alpha_bars[1:] / alpha_bars[:-1]
 
-
+# generate the initial observation
 yxss = np.random.normal(0, np.sqrt(1.0 - alpha_bars[0]), (Ntraj, nx, N + 1))
 yxss[:, :, 0] = x0
 yxss[:, :, -1] = xf
@@ -250,6 +214,6 @@ for i in range(Ndiff):
     # xs, us, yxs, yus = optimize_trajectory(xs, us, yxs, yus, noise_var)
     # Plot the optimized trajectory
     plot_traj(ax, xss, uss, yxss, yuss)
-    plt.savefig(f"../figure/t_{i}.png")
+    # plt.savefig(f"../figure/t_{i}.png")
     plt.pause(0.01)
 plt.show()
