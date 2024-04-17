@@ -14,22 +14,6 @@ obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the ob
 obs_radius = 0.3  # Radius of the obstacle
 
 
-## 1st order oint mload dynamics
-# Q = np.diag([0.5, 0.5])  # Weight matrix for the states
-# R = np.diag([0.1, 0.1])  # Weight matrix for the controls
-# x0 = np.array([-0.5, 0])  # Initial position
-# xf = np.array([0.5, 0])  # Final position
-# u_max = 1.0  # Maximum velocity
-# u_min = -1.0
-# nx = 2
-# nu = 2
-# def dynamics(x, u):
-#     return u
-# def stage_cost(x, u):
-#     return ca.mtimes([(x - xf).T, Q, x - xf]) + ca.mtimes([u.T, R, u])
-# def terminal_cost(x):
-#     return stage_cost(x, ca.DM([0.0]))*10.0
-
 ## 1st order car dynamics
 task = "car"
 Q = np.diag([1.0, 0.1, 0.1, 0.1])
@@ -56,60 +40,6 @@ def stage_cost(x, u):
 
 
 terminal_cost = lambda x: stage_cost(x, ca.DM([0.0, 0.0])) * 10.0
-
-## inverted pendulum dynamics
-# task = 'inverted_pendulum'
-# Q = np.diag([1.0, 0.1])
-# R = np.diag([0.1])
-# x0 = np.array([0.0, 0.0])
-# xf = np.array([np.pi, 0.0])
-# u_max = np.array([1.0])
-# u_min = np.array([-1.0])
-# nx = 2
-# nu = 1
-# g = 1.5
-# def dynamics(x, u):
-#     return ca.vertcat(
-#         x[1], # theta_dot
-#         u[0]-g*ca.sin(x[0]) # v_dot
-#     )*3.0
-# def stage_cost(x, u):
-#     x_new = ca.vertcat(ca.cos(x[0]), x[1])
-#     xf_new = ca.vertcat(ca.cos(xf[0]), xf[1])
-#     return ca.mtimes([(x_new - xf_new).T, Q, x_new - xf_new]) + ca.mtimes([u.T, R, u])
-# def terminal_cost(x):
-#     return stage_cost(x, ca.DM([0.0]))*30.0
-
-## acrobot dynamics
-# task = 'acrobot'
-# Q = np.diag([1.0, 1.0, 0.1, 0.1])
-# R = np.diag([0.1])
-# x0 = np.array([0.0, 0.0, 0.0, 0.0])
-# xf = np.array([np.pi, 0.0, 0.0, 0.0])
-# u_max = np.array([1.0])
-# u_min = np.array([-1.0])
-# nx = 4
-# nu = 1
-# g = 0.5
-# def dynamics(x, u):
-#     theta2_dot = (u[0] - ca.sin(x[1])*g*ca.cos(x[0]) - ca.sin(x[1])*ca.cos(x[0])*ca.sin(x[1]))/(1.0 + ca.sin(x[1])**2)
-#     theta1_dot = ca.cos(x[1])*theta2_dot - ca.cos(x[0])*ca.sin(x[1])*g
-#     return ca.vertcat(
-#         x[1], # theta1_dot
-#         x[2], # theta2_dot
-#         theta1_dot, # theta1_dot_dot
-#         theta2_dot # theta2_dot_dot
-#     )*3.0
-# def stage_cost(x, u):
-#     ry0 = 0.5*ca.cos(x[0])
-#     ry1 = 0.5*ca.cos(x[0]) + 0.5*ca.cos(x[0]+x[1])
-#     x_new = ca.vertcat(ry0, ry1, x[2], x[3])
-#     ryf0 = 0.5*ca.cos(xf[0])
-#     ryf1 = 0.5*ca.cos(xf[0]) + 0.5*ca.cos(xf[0]+xf[1])
-#     xf_new = ca.vertcat(ryf0, ryf1, xf[2], xf[3])
-#     return ca.mtimes([(x_new - xf_new).T, Q, x_new - xf_new]) + ca.mtimes([u.T, R, u])
-# def terminal_cost(x):
-#     return stage_cost(x, ca.DM([0.0]))*100.0
 
 
 def rk4(dynamics, x, u):
