@@ -11,20 +11,20 @@ from brax.io import mjcf
 scene = mjcf.loads(
     """
     <mujoco>
-    <option timestep="0.02" integrator="Euler" gravity="0 0 -9.81"/>
+    <option timestep="0.01" integrator="Euler"/>
 
     <worldbody>
         <body name="sphere1" pos="0.0 0 0.0">
-            <geom name="sphere1_geom" type="sphere" size="0.1" rgba="1 0 0 1" friction="1 0.001 0.0001" mass="0.5"/>
+            <geom name="sphere1_geom" type="sphere" size="0.1" rgba="1 0 0 1" mass="0.5"/>
             <joint name="sphere1_x" type="slide" axis="1 0 0" limited="true" range="-2 2"/>
             <joint name="sphere1_y" type="slide" axis="0 1 0" limited="true" range="-2 2"/>
         </body>
 
         <body name="box" pos="0.0 0 0.0">
-            <geom name="box_geom" type="box" size="0.3 0.1 0.1" rgba="0 0 1 1" friction="1 0.1 0.1" mass="0.1"/>
-            <joint name="box_x" type="slide" axis="1 0 0" limited="true" range="-2 2"/>
-            <joint name="box_y" type="slide" axis="0 1 0" limited="true" range="-2 2"/>
-            <joint name="box_z_rot" type="hinge" axis="0 0 1" limited="true" range="-3.14159 3.14159"/>
+            <geom name="box_geom" type="box" size="0.3 0.1 0.1" rgba="0 0 1 1" mass="0.1"/>
+            <joint name="box_x" type="slide" axis="1 0 0" limited="true" range="-2 2" damping="0.8"/>
+            <joint name="box_y" type="slide" axis="0 1 0" limited="true" range="-2 2" damping="0.8"/>
+            <joint name="box_z_rot" type="hinge" axis="0 0 1" damping="0.1"/>
         </body>
     </worldbody>
 
@@ -53,10 +53,11 @@ def visualize(ax, pos):
 fig, ax = plt.subplots()
 # visualize(ax, [0, 0, 1, 0])
 
-init_q = jnp.array([0.3, -0.2, 0.0, 0, 0.0])
+init_q = jnp.array([0.3, -0.3, 0.0, 0, 0.0])
 state = jax.jit(pipeline.init)(scene, init_q, jnp.zeros(scene.qd_size()))
 
-for _ in range(100):
+for _ in range(200):
     state = jax.jit(pipeline.step)(scene, state, jnp.array([0.0, 1.0]))
     visualize(ax, state.q)
-    plt.pause(0.1)
+    plt.savefig(f"../figure/pushT/{_}.png")
+    plt.pause(0.01)
