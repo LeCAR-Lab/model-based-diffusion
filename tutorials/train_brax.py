@@ -69,7 +69,6 @@ make_policy = ppo_networks.make_inference_fn(ppo_network)
 inference_fn = make_policy(params)
 jit_inference_fn = jax.jit(inference_fn)
 
-"""
 reward_sum = 0.0
 rollout = []
 for _ in range(1000):
@@ -119,3 +118,4 @@ uss = jax.random.normal(mppi_rng, (Nmppi, Hmppi, env.action_size)) * 0.2 + us_po
 rewards_mppi = jax.vmap(functools.partial(eval_us, state_reset))(uss)
 print(f"policy reward mean = {reward_policy}")
 print(f"mppi reward mean = {rewards_mppi.mean()}, std = {rewards_mppi.std()}, max = {rewards_mppi.max()}")
+"""
