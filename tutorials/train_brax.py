@@ -2,7 +2,7 @@ import functools
 from datetime import datetime
 from brax import envs
 from brax.training.agents.ppo import train as ppo
-from brax.training.agents.ppo import networks as ppo_networks 
+from brax.training.agents.ppo import networks as ppo_networks
 from brax.training.acme import running_statistics
 from brax.io import model, html
 import jax
@@ -11,10 +11,9 @@ from matplotlib import pyplot as plt
 
 ## setup env
 
-env_name = 'ant'
-backend = 'positional'
-env = envs.get_environment(env_name=env_name,
-                           backend=backend)
+env_name = "ant"
+backend = "positional"
+env = envs.get_environment(env_name=env_name, backend=backend)
 state = jax.jit(env.reset)(rng=jax.random.PRNGKey(seed=0))
 
 """
@@ -52,70 +51,112 @@ model.save_params(f'../figure/{env_name}/{backend}/params', params)
 
 ## load model
 
-load_backend = 'positional'
-params = model.load_params(f'../figure/{env_name}/{load_backend}/params')
 jit_env_reset = jax.jit(env.reset)
 jit_env_step = jax.jit(env.step)
 
-rng = jax.random.PRNGKey(seed=1)
+rng = jax.random.PRNGKey(seed=2)
 state_reset = jit_env_reset(rng=rng)
 
+"""
+load_backend = "positional"
+params = model.load_params(f"../figure/{env_name}/{load_backend}/params")
 normalize = running_statistics.normalize
 ppo_network = ppo_networks.make_ppo_networks(
-    state.obs.shape[-1],
-    env.action_size,
-    preprocess_observations_fn=normalize)
+    state.obs.shape[-1], env.action_size, preprocess_observations_fn=normalize
+)
 make_policy = ppo_networks.make_inference_fn(ppo_network)
 inference_fn = make_policy(params)
 jit_inference_fn = jax.jit(inference_fn)
 
 reward_sum = 0.0
 rollout = []
-for _ in range(1000):
+for _ in range(100):
     rollout.append(state.pipeline_state)
     act_rng, rng = jax.random.split(rng)
     act, _ = jit_inference_fn(state.obs, act_rng)
     state = jit_env_step(state, act)
     reward_sum += state.reward
 print(f"reward_sum: {reward_sum}")
-webpage = html.render(env.sys.replace(dt = env.dt), rollout)
+webpage = html.render(env.sys.replace(dt=env.dt), rollout)
 # save it to a file
-with open(f'../figure/{env_name}/{load_backend}/{backend}_render.html', 'w') as f:
+with open(f"../figure/{env_name}/{load_backend}/{backend}_render.html", "w") as f:
     f.write(webpage)
-
 """
-## run MPPI
-Hmppi = 100
-Nmppi = 100
 
+## run MPPI
+Nmppi = 1024 * 16
+Nnode = 15
+Hnode = 2
+Hmppi = (Nnode - 1) * Hnode + 1
+temp_mppi = 0.1
+nx = env.observation_size
+nu = env.action_size
+sigma = 1.0
+
+
+@jax.jit
 def eval_us(state, us):
     def step(state, u):
         state = jit_env_step(state, u)
         return state, state.reward
 
     _, rews = jax.lax.scan(step, state, us)
-    return rews.mean()
+    return rews
+
 
 # rollout policy for initial u sequence
-state = state_reset
-act_rng, rng = jax.random.split(rng)
-us_policy = jnp.zeros([Hmppi, env.action_size])
-reward_policy = 0.0
-for i in range(Hmppi):
-    act, _ = jit_inference_fn(state.obs, act_rng)
-    us_policy = us_policy.at[i, :].set(act)
-    state = jit_env_step(state, act)
-    reward_policy += state.reward
-# plot us_policy with matplotlib
-plt.plot(us_policy[:, 0], label = "policy")
-plt.legend()
-plt.show()
-exit()
-
-reward_policy = reward_policy / Hmppi
 mppi_rng, rng = jax.random.split(rng)
-uss = jax.random.normal(mppi_rng, (Nmppi, Hmppi, env.action_size)) * 0.2 + us_policy[None, ...]
-rewards_mppi = jax.vmap(functools.partial(eval_us, state_reset))(uss)
-print(f"policy reward mean = {reward_policy}")
-print(f"mppi reward mean = {rewards_mppi.mean()}, std = {rewards_mppi.std()}, max = {rewards_mppi.max()}")
-"""
+us_node = jnp.zeros((Nnode, nu))
+
+
+def linear_interpolation_single(x0, x1):
+    return jnp.linspace(x0, x1, Hnode + 1)[:-1]
+
+
+@jax.jit
+def linear_interpolation(us_node):
+    us_node0 = us_node[:-1]
+    us_node1 = us_node[1:]
+    us_wolast = jax.vmap(linear_interpolation_single, in_axes=(0, 0))(
+        us_node0, us_node1
+    )
+    us_wolast = jnp.reshape(us_wolast, (Hmppi - 1, nu))
+    us = jnp.concatenate([us_wolast, us_node[-1:]], axis=0)
+    return us
+
+
+fig, axes = plt.subplots(1, 2)
+reset_rng, rng = jax.random.split(rng)
+state = jit_env_reset(rng=reset_rng)
+reward_sum = 0.0
+rollout = [state.pipeline_state]
+for i in range(0, 100, Hnode):
+    rng, mppi_rng = jax.random.split(rng)
+    uss_node = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu)) * sigma + us_node
+    uss_node = jnp.clip(uss_node, -1.0, 1.0)
+    uss = jax.vmap(linear_interpolation, in_axes=(0))(uss_node)
+    rewss = jax.vmap(eval_us, in_axes=(None, 0))(state, uss)
+    rews = jnp.mean(rewss, axis=-1)
+    rews_normed = (rews - rews.mean()) / rews.std()
+    weights = jax.nn.softmax(rews_normed / temp_mppi)
+    us = jnp.einsum("n,nij->ij", weights, uss)
+    for j in range(Hnode):
+        state = jit_env_step(state, us[j])
+        rollout.append(state.pipeline_state)
+        reward_sum += state.reward
+    us_node = jnp.einsum("n,nij->ij", weights, uss_node)
+    us_node = jnp.concat([us_node[1:], us_node[-1:]], axis=0)
+    print(f"rew={rews.mean()} pm {rews.std()}")
+    print(f"weight={weights.mean()} pm {weights.std()}")
+    # plot histogram
+    # axes[0].cla()
+    # axes[0].hist(rews, bins=100)
+    # axes[1].cla()
+    # axes[1].hist(weights, bins=20)
+    # axes[1].set_ylim([0, 100])
+    # plt.pause(0.01)
+
+print(f"reward_sum: {reward_sum}")
+webpage = html.render(env.sys.replace(dt=env.dt), rollout)
+with open(f"../figure/{env_name}/{backend}/mppi_render.html", "w") as f:
+    f.write(webpage)
