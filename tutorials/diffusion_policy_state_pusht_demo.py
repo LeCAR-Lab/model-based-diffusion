@@ -555,7 +555,7 @@ class PushTEnv(gym.Env):
 
         # Add agent, block, and goal zone.
         self.agent = self.add_circle((256, 400), 15)
-        self.block = self.add_tee((256, 300), 0, scale = 30)
+        self.block = self.add_tee((256, 300), 0, scale=30)
         self.goal_color = pygame.Color("LightGreen")
         self.goal_pose = np.array([256, 256, np.pi / 4])  # x, y, theta (in radians)
 
@@ -1345,6 +1345,7 @@ obses = [obs]
 done = False
 step_idx = 0
 
+
 def eval_actions(env, init_state, actions, render=False):
     env._set_state(init_state)
     rewards = []
@@ -1363,6 +1364,7 @@ def eval_actions(env, init_state, actions, render=False):
     if render:
         vwrite(f"../figure/vis_{rewards.sum():.2f}.mp4", imgs)
     return rewards
+
 
 fig, ax = plt.subplots()
 with tqdm(total=max_steps, desc="Eval PushTStateEnv") as pbar:

@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 ## setup env
 
 env_name = "ant"
-backend = "spring"
+backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 state = jax.jit(env.reset)(rng=jax.random.PRNGKey(seed=0))
 
@@ -88,6 +88,7 @@ inference_fn = make_policy(params)
 jit_inference_fn = jax.jit(inference_fn)
 
 reward_sum = 0.0
+Nrollout = 1024 * 32
 Hrollout = 50
 us_policy = jnp.zeros([Hrollout, env.action_size])
 rollout = []
@@ -104,6 +105,34 @@ print(f"reward_sum: {reward_sum}")
 # with open(f"../figure/{env_name}/{load_backend}/{backend}_render.html", "w") as f:
 #     f.write(webpage)
 
+## Data collection
+
+
+@jax.jit
+def rollout_env(state, rng):
+    def step(carry, unused):
+        state, rng = carry
+        act_rng, rng = jax.random.split(rng)
+        act, _ = jit_inference_fn(state.obs, act_rng)
+        state = jit_env_step(state, act)
+        return (state, rng), act
+
+    _, us = jax.lax.scan(step, (state, rng), None, Hrollout)
+    return us
+
+
+rng = jax.random.PRNGKey(seed=0)
+reset_state = jit_env_reset(rng=rng)
+u_rng, rng = jax.random.split(rng)
+uss = jax.vmap(rollout_env, in_axes=(None, 0))(
+    reset_state, jax.random.split(u_rng, Nrollout)
+)
+# save it to a file
+print(f"collected uss with shape {uss.shape}")
+jnp.save(f"../figure/{env_name}/{backend}/uss.npy", uss)
+
+
+"""
 ## run MPPI
 Nmppi = 1024 * 16
 Nnode = 50
@@ -226,3 +255,4 @@ print(f"reward_sum: {reward_sum}")
 webpage = html.render(env.sys.replace(dt=env.dt), rollout)
 with open(f"../figure/{env_name}/{backend}/mppi_render.html", "w") as f:
     f.write(webpage)
+"""
