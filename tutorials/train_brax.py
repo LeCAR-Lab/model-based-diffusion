@@ -8,6 +8,9 @@ from brax.io import model, html
 import jax
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
+from jax import config
+
+config.update("jax_enable_x64", True)
 
 ## setup env
 
@@ -97,7 +100,7 @@ assert jnp.all(state.obs == test_state.obs), "reset state is different"
 reward_sum = 0.0
 test_reward_sum = 0.0
 Nrollout = 1024 * 64
-Hrollout = 100
+Hrollout = 50
 us_policy = jnp.zeros([Hrollout, env.action_size])
 rollout = []
 rollout_test = []
@@ -176,7 +179,7 @@ jnp.save(f"../figure/{env_name}/{backend}/uss.npy", uss)
 
 ## run MPPI
 Nmppi = 1024
-Nnode = 100
+Nnode = 50
 Hnode = 1
 Hmppi = (Nnode - 1) * Hnode + 1
 nx = env.observation_size
@@ -305,7 +308,6 @@ for i in range(Ndiffuse, 0, -1):
     #     rollout.append(state.pipeline_state)
     #     reward_sum += state.reward
     us_node = jnp.einsum("n,nij->ij", weights, uss_node)
-    us_node_best = uss_node[rews.argmax()]
 
     ys_rng, rng = jax.random.split(rng)
     ky = jnp.sqrt(alpha_t) * (1 - alpha_bar_tm1) / (1 - alpha_bar_t)
@@ -343,7 +345,7 @@ for i in range(Ndiffuse, 0, -1):
     # plt.pause(0.01)
 assert jnp.allclose(state.obs, jit_env_reset(rng_reset).obs), "state is changed"
 
-us = linear_interpolation(us_node_best)
+us = linear_interpolation(us_node)
 rollout = []
 state = jit_env_reset(rng=rng_reset)
 reward_sum = 0.0
