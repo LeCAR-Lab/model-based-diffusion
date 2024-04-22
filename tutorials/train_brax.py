@@ -14,7 +14,9 @@ from matplotlib import pyplot as plt
 env_name = "ant"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
-state = jax.jit(env.reset)(rng=jax.random.PRNGKey(seed=0))
+rng = jax.random.PRNGKey(seed=0)
+rng, rng_reset = jax.random.split(rng)
+state = jax.jit(env.reset)(rng=rng_reset)
 
 """
 ## train
@@ -73,11 +75,8 @@ model.save_params(f"../figure/{env_name}/{backend}/params", params)
 jit_env_reset = jax.jit(env.reset)
 jit_env_step = jax.jit(env.step)
 
-rng = jax.random.PRNGKey(seed=0)
-reset_rng, rng = jax.random.split(rng)
-state = jit_env_reset(rng=reset_rng)
 
-load_backend = "positional"
+load_backend = "spring"
 params = model.load_params(f"../figure/{env_name}/{load_backend}/params")
 normalize = running_statistics.normalize
 ppo_network = ppo_networks.make_ppo_networks(
@@ -87,26 +86,66 @@ make_policy = ppo_networks.make_inference_fn(ppo_network)
 inference_fn = make_policy(params)
 jit_inference_fn = jax.jit(inference_fn)
 
+
+test_env = envs.get_environment(env_name=env_name, backend=load_backend)
+jit_test_env_step = jax.jit(test_env.step)
+
+state = jit_env_reset(rng=rng_reset)
+test_state = jax.jit(test_env.reset)(rng=rng_reset)
+assert jnp.all(state.obs == test_state.obs), "reset state is different"
+
 reward_sum = 0.0
-Nrollout = 1024 * 32
-Hrollout = 50
+test_reward_sum = 0.0
+Nrollout = 1024 * 64
+Hrollout = 64
 us_policy = jnp.zeros([Hrollout, env.action_size])
 rollout = []
+rollout_test = []
 for i in range(Hrollout):
     rollout.append(state.pipeline_state)
+    rollout_test.append(test_state.pipeline_state)
     act_rng, rng = jax.random.split(rng)
     act, _ = jit_inference_fn(state.obs, act_rng)
-    us_policy = us_policy.at[i].set(act)
     state = jit_env_step(state, act)
+
+    test_act, _ = jit_inference_fn(test_state.obs, act_rng)
+    test_state = jit_test_env_step(test_state, test_act)
+
+    us_policy = us_policy.at[i].set(test_act)
+
     reward_sum += state.reward
-print(f"reward_sum: {reward_sum}")
+    test_reward_sum += test_state.reward
+
+state = jit_env_reset(rng=rng_reset)
+rollout_openloop = []
+openloop_reward_sum = 0.0
+for i in range(Hrollout):
+    rollout_openloop.append(state.pipeline_state)
+    state = jit_env_step(state, us_policy[i])
+    openloop_reward_sum += state.reward
+
+print(f"reward_sum (diff backend): {reward_sum/Hrollout:.2f}")
+print(f"test_reward_sum (same backend): {test_reward_sum/Hrollout:.2f}")
+print(f"openloop_reward_sum: {openloop_reward_sum/Hrollout:.2f}")
+
 # webpage = html.render(env.sys.replace(dt=env.dt), rollout)
-# # save it to a file
-# with open(f"../figure/{env_name}/{load_backend}/{backend}_render.html", "w") as f:
+# # # save it to a file
+# with open(f"../figure/{env_name}/{load_backend}/{backend}_RL_render.html", "w") as f:
 #     f.write(webpage)
+# webpage_test = html.render(env.sys.replace(dt=env.dt), rollout_test)
+# with open(
+#     f"../figure/{env_name}/{load_backend}/{load_backend}_RL_render.html", "w"
+# ) as f:
+#     f.write(webpage_test)
+# webpage_openloop = html.render(env.sys.replace(dt=env.dt), rollout_openloop)
+# with open(
+#     f"../figure/{env_name}/{load_backend}/{backend}_openloop_render.html", "w"
+# ) as f:
+#     f.write(webpage_openloop)
+
+"""
 
 ## Data collection
-
 
 @jax.jit
 def rollout_env(state, rng):
@@ -115,42 +154,42 @@ def rollout_env(state, rng):
         act_rng, rng = jax.random.split(rng)
         act, _ = jit_inference_fn(state.obs, act_rng)
         state = jit_env_step(state, act)
-        return (state, rng), act
+        return (state, rng), (act, state.reward)
 
-    _, us = jax.lax.scan(step, (state, rng), None, Hrollout)
-    return us
+    _, (us, rews) = jax.lax.scan(step, (state, rng), None, Hrollout)
+    return us, rews
 
 
 rng = jax.random.PRNGKey(seed=0)
 reset_state = jit_env_reset(rng=rng)
 u_rng, rng = jax.random.split(rng)
-uss = jax.vmap(rollout_env, in_axes=(None, 0))(
+uss, rews = jax.vmap(rollout_env, in_axes=(None, 0))(
     reset_state, jax.random.split(u_rng, Nrollout)
 )
 # save it to a file
 print(f"collected uss with shape {uss.shape}")
+print(f"collected rews = {rews.mean():.2e}")
 jnp.save(f"../figure/{env_name}/{backend}/uss.npy", uss)
 
 
 """
+
 ## run MPPI
 Nmppi = 1024 * 16
-Nnode = 50
+Nnode = 64
 Hnode = 1
 Hmppi = (Nnode - 1) * Hnode + 1
 nx = env.observation_size
 nu = env.action_size
-temp_mppi = 0.1
-sigmas = 0.2 / (jnp.arange(20) + 1)
-# sigmas = 0.5 * jnp.ones(20)
-# us_node = us_policy[::Hnode]
+temp_mppi = 0.1  # 0.1
 us_node = jnp.zeros([Nnode, nu])
-us_node = us_policy[::Hnode]
+# us_node = us_policy[::Hnode]
 y_rng, rng = jax.random.split(rng)
 # yus_node = us_node + jax.random.normal(y_rng, us_node.shape) * sigmas[0]
 yus_node = us_node
 
 
+# evaluate the diffused uss
 @jax.jit
 def eval_us(state, us):
     def step(state, u):
@@ -160,6 +199,13 @@ def eval_us(state, us):
     _, rews = jax.lax.scan(step, state, us)
     return rews
 
+
+"""
+uss = jnp.load(f"../figure/{env_name}/{backend}/uss_diffused.npy")
+state = jit_env_reset(rng=jax.random.PRNGKey(seed=0))
+rews = eval_us(state, uss[2])
+print(f"rews mean={rews.mean()}")
+"""
 
 # rollout policy for initial u sequence
 mppi_rng, rng = jax.random.split(rng)
@@ -182,40 +228,78 @@ def linear_interpolation(us_node):
 
 
 fig, axes = plt.subplots(1, 2)
-state = jit_env_reset(rng=reset_rng)
+state = jit_env_reset(rng_reset)
 reward_sum = 0.0
-for i in range(1, 10):
+Ndiffuse = 100
+
+# def cosine_schedule(num_timesteps, s=0.008):
+#     def f(t):
+#         return jnp.cos((t / num_timesteps + s) / (1 + s) * 0.5 * jnp.pi) ** 2
+
+#     x = jnp.linspace(0, num_timesteps, num_timesteps + 1)
+#     alphas_cumprod = f(x) / f(jnp.array([0]))
+#     betas = 1 - alphas_cumprod[1:] / alphas_cumprod[:-1]
+#     betas = jnp.clip(betas, 0.0001, 0.999)
+#     return betas
+
+betas = jnp.linspace(1e-4, 1e-2, Ndiffuse)
+alphas = 1.0 - betas
+alpha_bar_T = jnp.prod(alphas)
+print(f"init sigma = {jnp.sqrt(1 - alpha_bar_T):.2e}")
+
+for i in range(Ndiffuse, 0, -1):
     # sigma = sigmas[i]
     # sigma_prev = sigmas[i - 1]
     # alpha_bar = 1 - sigma**2
     # alpha_bar_prev = 1 - sigma_prev**2
     # alpha = alpha_bar_prev / alpha_bar
-    alpha = 0.995  # init sigma = 0.2
-    alpha_bar = alpha ** (10 - i)
-    alpha_bar_prev = alpha ** (10 - i - 1)
-    sigma = jnp.sqrt(1 - alpha_bar)
-    sigma_prev = jnp.sqrt(1 - alpha_bar_prev)
-    var_cond = (1 - alpha) * (1 - jnp.sqrt(alpha_bar_prev)) / (1 - alpha_bar)
+    alpha_t = alphas[i]
+    alpha_tm1 = alphas[i - 1]  # init sigma = 0.2
+    alpha_bar_t = jnp.prod(alphas[:i])
+    alpha_bar_tm1 = jnp.prod(alphas[: i - 1])
+    sigma_t = jnp.sqrt(1 - alpha_bar_t)
+    sigma_tm1 = jnp.sqrt(1 - alpha_bar_tm1)
+    Sigma_q_t = (1 - alpha_t) * (1 - jnp.sqrt(alpha_bar_tm1)) / (1.0 - alpha_bar_t)
+    sigma_q_t = jnp.sqrt(Sigma_q_t)
     # print(f"sigma={sigma:.2e} alpha={alpha:.2e} alpha_bar={alpha_bar:.2e}")
 
+    # sampling from p(yi)
+    # rng, mppi_rng = jax.random.split(rng)
+    # eps_u = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu))
+    # uss_node = jnp.sqrt(1 / alpha_bar_t - 1.0) * eps_u + yus_node / jnp.sqrt(
+    #     alpha_bar_t
+    # )
+    # uss_node = jnp.clip(uss_node, -1.0, 1.0)
+    # uss = jax.vmap(linear_interpolation, in_axes=(0))(uss_node)
+
+    # sampling from q(y0)
     rng, mppi_rng = jax.random.split(rng)
-    # uss_node = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu)) * sigma + us_node
-    eps = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu))
-    uss_node = (eps * sigma + yus_node) / jnp.sqrt(alpha_bar)
+    eps_u = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu))
+    uss_node = eps_u * jnp.sqrt(1 / alpha_bar_t - 1.0) + us_node
     uss_node = jnp.clip(uss_node, -1.0, 1.0)
     uss = jax.vmap(linear_interpolation, in_axes=(0))(uss_node)
-    uss = jnp.clip(uss, -1.0, 1.0)
 
     rewss = jax.vmap(eval_us, in_axes=(None, 0))(state, uss)
     rews = jnp.mean(rewss, axis=-1)
+    # normalize reward to 0->1
     rews_normed = (rews - rews.mean()) / rews.std()
 
+    # logp for sampling from p(yi)
     # logpdss = -0.5 * jnp.mean(eps**2, axis=-1)
     # logpds = jnp.mean(logpdss, axis=-1)
     # jax.debug.print("logpds mean={x} pm {y}", x=logpds.mean(), y=logpds.std())
     # jax.debug.print(f"rews_normed mean={rews_normed.mean()} pm {rews_normed.std()}")
+    # logweight = rews_normed
 
-    weights = jax.nn.softmax(rews_normed / temp_mppi)
+    # logpd for sampling from q(y0)
+    eps = (uss_node * jnp.sqrt(alpha_bar_t) - yus_node) / sigma_t
+    logpdss = -0.5 * jnp.mean(eps**2, axis=-1) + 0.5 * jnp.mean(eps_u**2, axis=-1)
+    logpds = jnp.mean(logpdss, axis=-1)
+    logpds = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
+    jax.debug.print("logpds mean={x:.2e} pm {y:.2e}", x=logpds.mean(), y=logpds.std())
+    logweight = rews_normed + logpds
+
+    weights = jax.nn.softmax(logweight / temp_mppi)
     # us = jnp.einsum("n,nij->ij", weights, uss)
     # for j in range(Hnode):
     #     state = jit_env_step(state, us[j])
@@ -224,16 +308,31 @@ for i in range(1, 10):
     us_node = jnp.einsum("n,nij->ij", weights, uss_node)
 
     ys_rng, rng = jax.random.split(rng)
-    ky = jnp.sqrt(alpha) * (1 - alpha_bar_prev) / (1 - alpha_bar)
-    kx = jnp.sqrt(alpha_bar_prev) * (1 - alpha) / (1 - alpha_bar)
-    yus_node = (
-        ky * yus_node
-        + kx * us_node
-        + jax.random.normal(ys_rng, (Nnode, nu)) * jnp.sqrt(var_cond)
-    )
-    # print(f"ky={ky:.2e} kx={kx:.2e}")
+    ky = jnp.sqrt(alpha_t) * (1 - alpha_bar_tm1) / (1 - alpha_bar_t)
+    kx = jnp.sqrt(alpha_bar_tm1) * (1 - alpha_t) / (1 - alpha_bar_t)
+    score_model = (ky - 1) * yus_node + kx * us_node
+    score_data = (ky - 1) * yus_node + kx * us_policy
+    # jax.debug.print(f"ky={ky:.2f} kx={kx:.2f}")
 
-    print(f"rew={rews.mean():.2f} pm {rews.std():.2f}")
+    k_model = i / (Ndiffuse - 1)
+    # k_model = 1.0  # without data
+    k_data = 1 - k_model
+    yus_node = (
+        yus_node
+        + k_model * score_model
+        + k_data * score_data
+        + jax.random.normal(ys_rng, (Nnode, nu)) * sigma_q_t
+    )
+
+    # axes[0].cla()
+    # axes[0].plot(yus_node[:, 0])
+    # axes[0].plot(us_policy[:, 0], "--")
+    # axes[0].set_ylim([-1, 1])
+    # plt.pause(0.01)
+
+    print(f"=================== {i} ===================")
+    print(f"sigma_t = {sigma_t:.2e}")
+    print(f"rew={rews.mean():.2f} pm {rews.std():.2f} max={rews.max():.2f}")
     # print(f"weight={weights.mean():.2f} pm {weights.std():.2f}")
     # plot histogram
     # axes[0].cla()
@@ -245,14 +344,13 @@ for i in range(1, 10):
 
 us = linear_interpolation(us_node)
 rollout = []
-state = jit_env_reset(rng=reset_rng)
+state = jit_env_reset(rng=rng_reset)
 for i in range(Hmppi):
     rollout.append(state.pipeline_state)
     state = jit_env_step(state, us[i])
     reward_sum += state.reward
 
-print(f"reward_sum: {reward_sum}")
+print(f"reward mean: {reward_sum/Hmppi}")
 webpage = html.render(env.sys.replace(dt=env.dt), rollout)
 with open(f"../figure/{env_name}/{backend}/mppi_render.html", "w") as f:
     f.write(webpage)
-"""
