@@ -97,7 +97,7 @@ assert jnp.all(state.obs == test_state.obs), "reset state is different"
 reward_sum = 0.0
 test_reward_sum = 0.0
 Nrollout = 1024 * 64
-Hrollout = 64
+Hrollout = 100
 us_policy = jnp.zeros([Hrollout, env.action_size])
 rollout = []
 rollout_test = []
@@ -137,11 +137,11 @@ print(f"openloop_reward_sum: {openloop_reward_sum/Hrollout:.2f}")
 #     f"../figure/{env_name}/{load_backend}/{load_backend}_RL_render.html", "w"
 # ) as f:
 #     f.write(webpage_test)
-# webpage_openloop = html.render(env.sys.replace(dt=env.dt), rollout_openloop)
-# with open(
-#     f"../figure/{env_name}/{load_backend}/{backend}_openloop_render.html", "w"
-# ) as f:
-#     f.write(webpage_openloop)
+webpage_openloop = html.render(env.sys.replace(dt=env.dt), rollout_openloop)
+with open(
+    f"../figure/{env_name}/{load_backend}/{backend}_openloop_render.html", "w"
+) as f:
+    f.write(webpage_openloop)
 
 """
 
@@ -175,13 +175,13 @@ jnp.save(f"../figure/{env_name}/{backend}/uss.npy", uss)
 """
 
 ## run MPPI
-Nmppi = 1024 * 16
-Nnode = 64
+Nmppi = 1024
+Nnode = 100
 Hnode = 1
 Hmppi = (Nnode - 1) * Hnode + 1
 nx = env.observation_size
 nu = env.action_size
-temp_mppi = 0.1  # 0.1
+temp_mppi = 0.5  # 0.1
 us_node = jnp.zeros([Nnode, nu])
 # us_node = us_policy[::Hnode]
 y_rng, rng = jax.random.split(rng)
@@ -273,22 +273,21 @@ for i in range(Ndiffuse, 0, -1):
     # uss = jax.vmap(linear_interpolation, in_axes=(0))(uss_node)
 
     # sampling from q(y0)
+    us_node_repeat = jnp.repeat(us_node[None, ...], Nmppi, axis=0)
+    n_policy = int((i / Ndiffuse) * Nmppi)
+    us_node_repeat = us_node_repeat.at[:n_policy].set(us_policy)
     rng, mppi_rng = jax.random.split(rng)
     eps_u = jax.random.normal(mppi_rng, (Nmppi, Nnode, nu))
-    uss_node = eps_u * jnp.sqrt(1 / alpha_bar_t - 1.0) + us_node
+    uss_node = eps_u * jnp.sqrt(1 / alpha_bar_t - 1.0) + us_node_repeat
     uss_node = jnp.clip(uss_node, -1.0, 1.0)
     uss = jax.vmap(linear_interpolation, in_axes=(0))(uss_node)
 
     rewss = jax.vmap(eval_us, in_axes=(None, 0))(state, uss)
     rews = jnp.mean(rewss, axis=-1)
-    # normalize reward to 0->1
+    # normalize reward
     rews_normed = (rews - rews.mean()) / rews.std()
 
     # logp for sampling from p(yi)
-    # logpdss = -0.5 * jnp.mean(eps**2, axis=-1)
-    # logpds = jnp.mean(logpdss, axis=-1)
-    # jax.debug.print("logpds mean={x} pm {y}", x=logpds.mean(), y=logpds.std())
-    # jax.debug.print(f"rews_normed mean={rews_normed.mean()} pm {rews_normed.std()}")
     # logweight = rews_normed
 
     # logpd for sampling from q(y0)
@@ -296,8 +295,8 @@ for i in range(Ndiffuse, 0, -1):
     logpdss = -0.5 * jnp.mean(eps**2, axis=-1) + 0.5 * jnp.mean(eps_u**2, axis=-1)
     logpds = jnp.mean(logpdss, axis=-1)
     logpds = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
-    jax.debug.print("logpds mean={x:.2e} pm {y:.2e}", x=logpds.mean(), y=logpds.std())
-    logweight = rews_normed + logpds
+    # jax.debug.print("logpds mean={x:.2e} pm {y:.2e}", x=logpds.mean(), y=logpds.std())
+    logweight = rews_normed + 0.0 * logpds
 
     weights = jax.nn.softmax(logweight / temp_mppi)
     # us = jnp.einsum("n,nij->ij", weights, uss)
@@ -306,6 +305,7 @@ for i in range(Ndiffuse, 0, -1):
     #     rollout.append(state.pipeline_state)
     #     reward_sum += state.reward
     us_node = jnp.einsum("n,nij->ij", weights, uss_node)
+    us_node_best = uss_node[rews.argmax()]
 
     ys_rng, rng = jax.random.split(rng)
     ky = jnp.sqrt(alpha_t) * (1 - alpha_bar_tm1) / (1 - alpha_bar_t)
@@ -314,9 +314,9 @@ for i in range(Ndiffuse, 0, -1):
     score_data = (ky - 1) * yus_node + kx * us_policy
     # jax.debug.print(f"ky={ky:.2f} kx={kx:.2f}")
 
-    k_model = i / (Ndiffuse - 1)
-    # k_model = 1.0  # without data
-    k_data = 1 - k_model
+    # k_data = i / Ndiffuse
+    k_data = 0.0  # without data
+    k_model = 1 - k_data
     yus_node = (
         yus_node
         + k_model * score_model
@@ -341,10 +341,12 @@ for i in range(Ndiffuse, 0, -1):
     # axes[1].hist(weights, bins=20)
     # axes[1].set_ylim([0, 100])
     # plt.pause(0.01)
+assert jnp.allclose(state.obs, jit_env_reset(rng_reset).obs), "state is changed"
 
-us = linear_interpolation(us_node)
+us = linear_interpolation(us_node_best)
 rollout = []
 state = jit_env_reset(rng=rng_reset)
+reward_sum = 0.0
 for i in range(Hmppi):
     rollout.append(state.pipeline_state)
     state = jit_env_step(state, us[i])
