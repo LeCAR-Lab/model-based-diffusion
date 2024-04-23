@@ -12,8 +12,8 @@ from jax import config
 
 ## setup env
 
-env_name = "hopper"
-backend = "positional"
+env_name = "halfcheetah"
+backend = "spring"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
@@ -37,25 +37,6 @@ train_fn = {
         entropy_cost=1e-2,
         num_envs=4096,
         batch_size=2048,
-        seed=1,
-    ),
-    "reacher": functools.partial(
-        ppo.train,
-        num_timesteps=50_000_000,
-        num_evals=20,
-        reward_scaling=5,
-        episode_length=1000,
-        normalize_observations=True,
-        action_repeat=4,
-        unroll_length=50,
-        num_minibatches=32,
-        num_updates_per_batch=8,
-        discounting=0.95,
-        learning_rate=3e-4,
-        entropy_cost=1e-3,
-        num_envs=2048,
-        batch_size=256,
-        max_devices_per_host=8,
         seed=1,
     ),
     "hopper": functools.partial(
@@ -166,7 +147,10 @@ make_inference_fn, params, _ = train_fn(environment=env, progress_fn=progress)
 print(f"time to jit: {times[1] - times[0]}")
 print(f"time to train: {times[-1] - times[1]}")
 
-model.save_params(f"../figure/{env_name}/{backend}/params", params)
+path = f"../figure/{env_name}/{backend}"
+if not os.path.exists(path):
+    os.makedirs(path)
+model.save_params(f"{path}/params", params)
 
 
 ## evaluate
@@ -191,8 +175,5 @@ for _ in range(1000):
     state = jit_env_step(state, act)
 
 webpage = html.render(env.sys.replace(dt=env.dt), rollout)
-path = f"../figure/{env_name}/{backend}"
-if not os.path.exists(path):
-    os.makedirs(path)
 with open(f"{path}/RL.html", "w") as f:
     f.write(webpage)

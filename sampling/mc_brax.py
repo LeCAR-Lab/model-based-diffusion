@@ -11,12 +11,12 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
 ## setup env
 
-env_name = "hopper"
-backend = "spring"
+env_name = "walker2d"
+backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
 Nu = env.action_size
@@ -76,36 +76,36 @@ def reverse_once(carry, unused):
     t, rng, Y0_hat, Yt = carry
 
     # calculate Y0_hat
-    # # Method1: sampling around Y0_hat
-    # # sample Y0s from Y0_hat
-    # rng, Y0s_rng = jax.random.split(rng)
-    # eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
-    # Y0s = Y0_hat + eps_u * sigmas[t]
-    # Y0s = jnp.clip(Y0s, -1.0, 1.0)
-    # # calculate reward for Y0s
-    # eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
-    # logpdss = -0.5 * jnp.mean(eps_Y ** 2, axis=-1) + 0.5 * jnp.mean(eps_u ** 2, axis=-1)
-    # logpds = logpdss.mean(axis=-1)
-    # logpds_normed = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
-    # rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-    # rews_normed = (rews - rews.mean()) / rews.std()
-    # logweight = rews_normed + logpds_normed
-    # weights = jax.nn.softmax(logweight / temp_sample)
-    # # Get new Y0_hat
-    # Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
-
-    # Method2: sample around Yt
+    # Method1: sampling around Y0_hat
+    # sample Y0s from Y0_hat
     rng, Y0s_rng = jax.random.split(rng)
-    eps_Y = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
-    Y0s = Yt / jnp.sqrt(alphas_bar[t]) + eps_Y * jnp.sqrt(1 / alphas_bar[t] - 1)
+    eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
+    Y0s = Y0_hat + eps_u * sigmas[t]
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
+    eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
+    logpdss = -0.5 * jnp.mean(eps_Y ** 2, axis=-1) + 0.5 * jnp.mean(eps_u ** 2, axis=-1)
+    logpds = logpdss.mean(axis=-1)
+    logpds_normed = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
     rews_normed = (rews - rews.mean()) / rews.std()
-    logweight = rews_normed
+    logweight = rews_normed + logpds_normed
     weights = jax.nn.softmax(logweight / temp_sample)
     # Get new Y0_hat
     Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
+
+    # Method2: sample around Yt
+    # rng, Y0s_rng = jax.random.split(rng)
+    # eps_Y = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
+    # Y0s = Yt / jnp.sqrt(alphas_bar[t]) + eps_Y * jnp.sqrt(1 / alphas_bar[t] - 1)
+    # Y0s = jnp.clip(Y0s, -1.0, 1.0)
+    # # calculate reward for Y0s
+    # rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
+    # rews_normed = (rews - rews.mean()) / rews.std()
+    # logweight = rews_normed
+    # weights = jax.nn.softmax(logweight / temp_sample)
+    # # Get new Y0_hat
+    # Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
 
     # calculate score function
     ky = - 1.0 / (1 - alphas_bar[t])
@@ -128,6 +128,8 @@ def reverse(Y0_hat, Yt, rng):
 rng_exp = jax.random.split(rng, Nexp)
 Y0_hat_exp, Y0_exp, rew_exp = jax.vmap(reverse)(Y0_hat_exp, Yt_exp, rng_exp)
 
-print(f"rews mean: {rew_exp.mean():.2e} std: {rew_exp.std():.2e}")
+print(rew_exp)
+rews = rew_exp[:, -1]
+print(f"rews mean: {rews.mean():.2e} std: {rews.std():.2e}")
 
 render_us(state_init, Y0_hat_exp[jnp.argmax(rew_exp)])
