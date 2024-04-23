@@ -13,6 +13,11 @@ from jax import config
 
 # config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
+## global config
+
+use_data = True
+init_data = False
+
 ## setup env
 
 env_name = "ant"
@@ -25,6 +30,9 @@ reset_env = jax.jit(env.reset)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
 state_init = reset_env(rng_reset)
+path = f"../figure/{env_name}/{backend}"
+if not os.path.exists(path):
+    os.makedirs(path)
 
 ## run diffusion
 
@@ -46,6 +54,11 @@ Y0_hat_exp = jnp.zeros([Nexp, Hsample, Nu])
 rng, rng_y = jax.random.split(rng)
 Yt_exp = jax.random.normal(rng_y, (Nexp, Hsample, Nu))
 
+if use_data or init_data:
+    Y0_data = jnp.load(f"{path}/Y0.npy")
+if init_data:
+    Y0_hat_exp = jnp.repeat(Y0_data[None, ...], Nexp, axis=0)
+
 # evaluate the diffused uss
 @jax.jit
 def eval_us(state, us):
@@ -65,9 +78,6 @@ def render_us(state, us):
         rew_sum += state.reward
     webpage = html.render(env.sys.replace(dt=env.dt), rollout)
     print(f"evaluated reward mean: {(rew_sum / Hsample):.2e}")
-    path = f"../figure/{env_name}/{backend}"
-    if not os.path.exists(path):
-        os.makedirs(path)
     with open(f"{path}/rollout.html", "w") as f:
         f.write(webpage)
 
@@ -81,6 +91,12 @@ def reverse_once(carry, unused):
     rng, Y0s_rng = jax.random.split(rng)
     eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
     Y0s = Y0_hat + eps_u * sigmas[t]
+    if use_data:
+        p_data = t / (Ndiffuse - 1)
+        rng, data_rng = jax.random.split(rng)
+        data_mask = jax.random.uniform(data_rng, (Nsample, Hsample)) < p_data
+        deltaY0 = Y0_data - Y0_hat
+        Y0s = jnp.where(data_mask, Y0s + deltaY0, Y0s)
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
     eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
