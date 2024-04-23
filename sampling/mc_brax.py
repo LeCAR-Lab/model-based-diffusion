@@ -16,7 +16,7 @@ config.update("jax_enable_x64", True) # NOTE: this is important for simulating l
 ## setup env
 
 env_name = "hopper"
-backend = "positional"
+backend = "spring"
 env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
 Nu = env.action_size
@@ -76,27 +76,46 @@ def reverse_once(carry, unused):
     t, rng, Y0_hat, Yt = carry
 
     # calculate Y0_hat
-    # sample Y0s from Y0_hat
+    # # Method1: sampling around Y0_hat
+    # # sample Y0s from Y0_hat
+    # rng, Y0s_rng = jax.random.split(rng)
+    # eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
+    # Y0s = Y0_hat + eps_u * sigmas[t]
+    # Y0s = jnp.clip(Y0s, -1.0, 1.0)
+    # # calculate reward for Y0s
+    # eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
+    # logpdss = -0.5 * jnp.mean(eps_Y ** 2, axis=-1) + 0.5 * jnp.mean(eps_u ** 2, axis=-1)
+    # logpds = logpdss.mean(axis=-1)
+    # logpds_normed = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
+    # rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
+    # rews_normed = (rews - rews.mean()) / rews.std()
+    # logweight = rews_normed + logpds_normed
+    # weights = jax.nn.softmax(logweight / temp_sample)
+    # # Get new Y0_hat
+    # Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
+
+    # Method2: sample around Yt
     rng, Y0s_rng = jax.random.split(rng)
-    eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
-    Y0s = Y0_hat + eps_u * sigmas[t]
+    eps_Y = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
+    Y0s = Yt / jnp.sqrt(alphas_bar[t]) + eps_Y * jnp.sqrt(1 / alphas_bar[t] - 1)
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-    logweight = (rews - rews.mean()) / rews.std()
+    rews_normed = (rews - rews.mean()) / rews.std()
+    logweight = rews_normed
     weights = jax.nn.softmax(logweight / temp_sample)
     # Get new Y0_hat
     Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
 
     # calculate score function
-    ky = jnp.sqrt(alphas[t]) * (1 - alphas_bar[t-1]) / (1 - alphas_bar[t])
-    kx = jnp.sqrt(alphas_bar[t-1]) * (1 - alphas[t]) / (1 - alphas_bar[t])
-    score = (ky - 1) * Yt + kx * Y0_hat_new
+    ky = - 1.0 / (1 - alphas_bar[t])
+    kx = jnp.sqrt(alphas_bar[t]) / (1 - alphas_bar[t])
+    score = ky * Yt + kx * Y0_hat_new
 
     # calculate Ytm1
     rng, Ytm1_rng = jax.random.split(rng)
     eps_Ytm1 = jax.random.normal(Ytm1_rng, (Hsample, Nu))
-    Ytm1 = Yt + score + sigmas_cond[t] * eps_Ytm1
+    Ytm1 = 1 / jnp.sqrt(1.0 - betas[t]) * (Yt + 0.5 * betas[t] * score) + jnp.sqrt(betas[t]) * eps_Ytm1
 
     return (t - 1, rng, Y0_hat_new, Ytm1), rews.mean()
 

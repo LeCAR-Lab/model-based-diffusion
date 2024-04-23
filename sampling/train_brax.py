@@ -10,8 +10,6 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-config.update("jax_enable_x64", True)
-
 ## setup env
 
 env_name = "hopper"
