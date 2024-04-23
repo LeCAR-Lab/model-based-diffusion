@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "swimmer"
+env_name = "pusher"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
