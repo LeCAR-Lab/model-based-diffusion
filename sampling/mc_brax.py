@@ -16,15 +16,17 @@ from jax import config
 
 ## global config
 
-use_data = True
+use_data = False
 init_data = False
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "humanoid"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
+elif env_name in ["humanoid"]:
+    substeps = 2
 else:
     substeps = 1
 env = envs.get_environment(env_name=env_name, backend=backend)

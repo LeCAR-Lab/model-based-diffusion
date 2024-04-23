@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "humanoid"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
@@ -23,7 +23,7 @@ rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
 
 ## train
-if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher']:
+if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher', 'humanoid']:
     normalize = running_statistics.normalize
     ppo_network = ppo_networks.make_ppo_networks(
         state.obs.shape[-1], env.action_size, preprocess_observations_fn=normalize
@@ -54,6 +54,9 @@ reward_sum = 0
 if env_name in ['hopper', 'walker2d']:
     Heval = 500
     substeps = 10
+elif env_name in ['humanoid']:
+    Heval = 100
+    substeps = 2
 else:
     Heval = 50
     substeps = 1
@@ -74,7 +77,7 @@ with open(f"{path}/RL.html", "w") as f:
 
 ## run us_policy in new backend
 backend_test = "positional"
-noise = 0.05
+noise = 0.0
 env_test = envs.get_environment(env_name=env_name, backend=backend_test)
 state_test = jax.jit(env_test.reset)(rng=rng_reset)
 jit_env_step_test = jax.jit(env_test.step)
@@ -84,9 +87,9 @@ reward_sum = 0
 for i in range(Heval):
     if i % substeps == 0:
         u = us_policy[i]
-        if substeps == 1:
-            rng, rng_noise = jax.random.split(rng)
-            u = u + noise * jax.random.normal(rng_noise, u.shape)
+        # if substeps == 1:
+        rng, rng_noise = jax.random.split(rng)
+        u = u + noise * jax.random.normal(rng_noise, u.shape)
         Y0.append(u)
     rollout.append(state_test.pipeline_state)
     state_test = jit_env_step_test(state_test,u)

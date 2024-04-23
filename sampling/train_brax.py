@@ -133,6 +133,24 @@ train_fn = {
         batch_size=1024,
         seed=1,
     ),
+    "humanoidstandup": functools.partial(
+        ppo.train,
+        num_timesteps=100_000_000,
+        num_evals=20,
+        reward_scaling=0.1,
+        episode_length=1000,
+        normalize_observations=True,
+        action_repeat=1,
+        unroll_length=15,
+        num_minibatches=32,
+        num_updates_per_batch=8,
+        discounting=0.97,
+        learning_rate=6e-4,
+        entropy_cost=1e-2,
+        num_envs=2048,
+        batch_size=1024,
+        seed=1,
+    ),
 }[env_name]
 
 max_y = {
