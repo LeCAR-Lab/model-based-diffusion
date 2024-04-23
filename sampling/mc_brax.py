@@ -17,11 +17,11 @@ from jax import config
 ## global config
 
 use_data = False
-init_data = True
+init_data = False
 
 ## setup env
 
-env_name = "humanoidstandup"
+env_name = "walker2d"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -56,7 +56,7 @@ if not os.path.exists(path):
 
 ## run diffusion
 
-Nexp = 8
+Nexp = 1
 Nsample = 1024
 Hsample = 50
 Ndiffuse = 100
@@ -177,8 +177,7 @@ def reverse(Y0_hat, Yt, rng):
 rng_exp = jax.random.split(rng, Nexp)
 Y0_hat_exp, Y0_exp, rew_exp = jax.vmap(reverse)(Y0_hat_exp, Yt_exp, rng_exp)
 
-print(rew_exp)
-rews = rew_exp[:, -1]
-print(f"rews mean: {rews.mean():.2e} std: {rews.std():.2e}")
+rew_eval = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0_exp).mean(axis=-1)
+print(f"rews mean: {rew_eval.mean():.2e} std: {rew_eval.std():.2e}")
 
-render_us(state_init, Y0_hat_exp[jnp.argmax(rews)])
+render_us(state_init, Y0_exp[jnp.argmax(rew_eval)])

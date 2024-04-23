@@ -15,10 +15,10 @@ from jax import config
 
 ## setup env
 
-env_name = "humanoidstandup"
+env_name = "halfcheetah"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
-rng = jax.random.PRNGKey(seed=0)
+rng = jax.random.PRNGKey(seed=1)
 rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
 
