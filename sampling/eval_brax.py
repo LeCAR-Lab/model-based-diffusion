@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "humanoid"
+env_name = "humanoidstandup"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
@@ -23,7 +23,7 @@ rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
 
 ## train
-if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher', 'humanoid']:
+if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher', 'humanoid', 'humanoidstandup']:
     normalize = running_statistics.normalize
     ppo_network = ppo_networks.make_ppo_networks(
         state.obs.shape[-1], env.action_size, preprocess_observations_fn=normalize
@@ -54,7 +54,7 @@ reward_sum = 0
 if env_name in ['hopper', 'walker2d']:
     Heval = 500
     substeps = 10
-elif env_name in ['humanoid']:
+elif env_name in ['humanoid', 'humanoidstandup']:
     Heval = 100
     substeps = 2
 else:

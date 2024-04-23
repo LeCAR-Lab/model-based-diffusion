@@ -17,15 +17,15 @@ from jax import config
 ## global config
 
 use_data = False
-init_data = False
+init_data = True
 
 ## setup env
 
-env_name = "humanoid"
+env_name = "humanoidstandup"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
-elif env_name in ["humanoid"]:
+elif env_name in ["humanoid", "humanoidstandup"]:
     substeps = 2
 else:
     substeps = 1
