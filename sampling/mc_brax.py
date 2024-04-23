@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "walker2d"
+env_name = "swimmer"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
