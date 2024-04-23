@@ -15,8 +15,8 @@ from jax import config
 
 ## setup env
 
-env_name = "walker2d"
-backend = "spring"
+env_name = "halfcheetah"
+backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
@@ -51,7 +51,12 @@ jit_inference_fn = jax.jit(inference_fn)
 rollout = []
 state = jit_env_reset(rng=rng_reset)
 reward_sum = 0
-Heval = 500
+if env_name in ['hopper', 'walker2d']:
+    Heval = 500
+    substeps = 10
+else:
+    Heval = 50
+    substeps = 1
 us_policy = []
 for _ in range(Heval):
     rollout.append(state.pipeline_state)
@@ -62,22 +67,32 @@ for _ in range(Heval):
     us_policy.append(act)
 print(f"evaluated reward mean: {(reward_sum / Heval):.2e}")
 us_policy = jnp.stack(us_policy)
-jnp.save(f"{path}/us_policy.npy", us_policy)
+# jnp.save(f"{path}/us_policy.npy", us_policy)
 webpage = html.render(env.sys.replace(dt=env.dt), rollout)
 with open(f"{path}/RL.html", "w") as f:
     f.write(webpage)
 
 ## run us_policy in new backend
 backend_test = "positional"
+noise = 0.05
 env_test = envs.get_environment(env_name=env_name, backend=backend_test)
 state_test = jax.jit(env_test.reset)(rng=rng_reset)
 jit_env_step_test = jax.jit(env_test.step)
 rollout = []
+Y0 = []
 reward_sum = 0
 for i in range(Heval):
+    if i % substeps == 0:
+        u = us_policy[i]
+        if substeps == 1:
+            rng, rng_noise = jax.random.split(rng)
+            u = u + noise * jax.random.normal(rng_noise, u.shape)
+        Y0.append(u)
     rollout.append(state_test.pipeline_state)
-    state_test = jit_env_step_test(state_test, us_policy[i])
+    state_test = jit_env_step_test(state_test,u)
     reward_sum += state_test.reward
+Y0 = jnp.stack(Y0)
+jnp.save(f"{path}/Y0.npy", Y0)
 print(f"evaluated reward mean (new backend, openloop): {(reward_sum / Heval):.2e}")
 webpage = html.render(env_test.sys.replace(dt=env_test.dt), rollout)
 with open(f"{path}/openloop.html", "w") as f:

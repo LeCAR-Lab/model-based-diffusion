@@ -9,11 +9,15 @@ import jax
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
+import argparse
 
 ## setup env
-
-env_name = "halfcheetah"
-backend = "spring"
+parser = argparse.ArgumentParser()
+parser.add_argument("--env_name", type=str, default="halfcheetah")
+parser.add_argument("--backend", type=str, default="positional")
+args = parser.parse_args()
+env_name = args.env_name
+backend = args.backend
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
@@ -111,6 +115,24 @@ train_fn = {
         batch_size=512,
         seed=3,
     ),
+    "humanoid": functools.partial(
+        ppo.train,
+        num_timesteps=50_000_000,
+        num_evals=10,
+        reward_scaling=0.1,
+        episode_length=1000,
+        normalize_observations=True,
+        action_repeat=1,
+        unroll_length=10,
+        num_minibatches=32,
+        num_updates_per_batch=8,
+        discounting=0.97,
+        learning_rate=3e-4,
+        entropy_cost=1e-3,
+        num_envs=2048,
+        batch_size=1024,
+        seed=1,
+    ),
 }[env_name]
 
 max_y = {
@@ -128,6 +150,7 @@ min_y = {"reacher": -100, "pusher": -150}.get(env_name, 0)
 fig, ax = plt.subplots()
 xdata, ydata = [], []
 times = [datetime.now()]
+
 
 def progress(num_steps, metrics):
     times.append(datetime.now())

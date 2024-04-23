@@ -16,12 +16,12 @@ from jax import config
 
 ## global config
 
-use_data = False
+use_data = True
 init_data = False
 
 ## setup env
 
-env_name = "walker2d"
+env_name = "halfcheetah"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -73,9 +73,9 @@ rng, rng_y = jax.random.split(rng)
 Yt_exp = jax.random.normal(rng_y, (Nexp, Hsample, Nu))
 
 if use_data:
-    Y0_data = jnp.load(f"{path}/Y0.npy")[::substeps]
+    Y0_data = jnp.load(f"{path}/Y0.npy")
 if init_data:
-    Y0_data = jnp.load(f"{path}/Y0.npy")[::substeps]
+    Y0_data = jnp.load(f"{path}/Y0.npy")
     Y0_hat_exp = jnp.repeat(Y0_data[None], Nexp, axis=0)
 
 
@@ -98,8 +98,9 @@ def render_us(state, us):
             rollout.append(state.pipeline_state)
             state = step_env_jit(state, us[i])
             rew_sum += state.reward
+    rew_mean = rew_sum / (Hsample * substeps)
     webpage = html.render(env.sys.replace(dt=env.dt), rollout)
-    print(f"evaluated reward mean: {(rew_sum / Hsample):.2e}")
+    print(f"evaluated reward mean: {rew_mean:.2e}")
     with open(f"{path}/rollout.html", "w") as f:
         f.write(webpage)
 
@@ -178,4 +179,4 @@ print(rew_exp)
 rews = rew_exp[:, -1]
 print(f"rews mean: {rews.mean():.2e} std: {rews.std():.2e}")
 
-render_us(state_init, Y0_hat_exp[jnp.argmax(rew_exp)])
+render_us(state_init, Y0_hat_exp[jnp.argmax(rews)])
