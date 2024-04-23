@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "ant"
+env_name = "walker2d"
 backend = "spring"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
@@ -51,7 +51,7 @@ jit_inference_fn = jax.jit(inference_fn)
 rollout = []
 state = jit_env_reset(rng=rng_reset)
 reward_sum = 0
-Heval = 50
+Heval = 500
 us_policy = []
 for _ in range(Heval):
     rollout.append(state.pipeline_state)
