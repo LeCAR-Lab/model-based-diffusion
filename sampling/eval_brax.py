@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "ant"
 backend = "spring"
 env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
@@ -65,4 +65,20 @@ us_policy = jnp.stack(us_policy)
 jnp.save(f"{path}/us_policy.npy", us_policy)
 webpage = html.render(env.sys.replace(dt=env.dt), rollout)
 with open(f"{path}/RL.html", "w") as f:
+    f.write(webpage)
+
+## run us_policy in new backend
+backend_test = "positional"
+env_test = envs.get_environment(env_name=env_name, backend=backend_test)
+state_test = jax.jit(env_test.reset)(rng=rng_reset)
+jit_env_step_test = jax.jit(env_test.step)
+rollout = []
+reward_sum = 0
+for i in range(Heval):
+    rollout.append(state_test.pipeline_state)
+    state_test = jit_env_step_test(state_test, us_policy[i])
+    reward_sum += state_test.reward
+print(f"evaluated reward mean (new backend, openloop): {(reward_sum / Heval):.2e}")
+webpage = html.render(env_test.sys.replace(dt=env_test.dt), rollout)
+with open(f"{path}/openloop.html", "w") as f:
     f.write(webpage)

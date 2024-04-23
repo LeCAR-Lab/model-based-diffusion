@@ -15,7 +15,7 @@ from jax import config
 
 ## setup env
 
-env_name = "pusher"
+env_name = "ant"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
@@ -28,11 +28,11 @@ state_init = reset_env(rng_reset)
 
 ## run diffusion
 
-Nexp = 1
+Nexp = 8
 Nsample = 1024
 Hsample = 50
 Ndiffuse = 100
-temp_sample = 0.5  # 0.1
+temp_sample = 0.5
 betas = jnp.linspace(1e-4, 1e-2, Ndiffuse)
 alphas = 1.0 - betas
 alphas_bar = jnp.cumprod(alphas)
