@@ -43,6 +43,7 @@ import skimage.transform as st
 from skvideo.io import vwrite
 import gdown
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'  # Adjust the device number based on your system
 
 # @markdown ### **Environment**
 # @markdown Defines a PyMunk-based Push-T environment `PushTEnv`.
