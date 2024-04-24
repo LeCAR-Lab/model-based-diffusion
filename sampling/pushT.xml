@@ -21,10 +21,10 @@
             <geom name="slider_geoms" type="box" size="0.05 0.15 0.05" rgba="0 0 1 1"
                 friction="1 0.1 0.1" mass="0.1" pos="-0.1 0 0.0" />
             <joint name="slider_x" type="slide" axis="1 0 0" limited="true" range="-1 1"
-                damping="1.0" />
+                damping="3.0" />
             <joint name="slider_y" type="slide" axis="0 1 0" limited="true" range="-1 1"
-                damping="1.0" />
-            <joint name="slider_z_rot" type="hinge" axis="0 0 1" damping="0.01" />
+                damping="3.0" />
+            <joint name="slider_z_rot" type="hinge" axis="0 0 1" damping="0.03" />
         </body>
 
         <body name="goal" pos="0.0 0 0.0">
@@ -40,8 +40,8 @@
     </worldbody>
 
     <actuator>
-        <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="20" kv="6"/>
-        <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="20" kv="6"/>
+        <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="30" kv="10"/>
+        <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="30" kv="10"/>
         <!-- <motor name="pusher_x" joint="pusher_x" ctrlrange="-1 1" />
         <motor name="pusher_y" joint="pusher_y" ctrlrange="-1 1" /> -->
     </actuator>

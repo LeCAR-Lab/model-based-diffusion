@@ -51,7 +51,7 @@ class PushT(PipelineEnv):
         r_slider = pipeline_state.q[2:4]
         theta_goal = pipeline_state.q[7]
         theta_slider = pipeline_state.q[4]
-        return 1.0 - jnp.linalg.norm(r_goal - r_slider)**2 - ((theta_goal - theta_slider) / (2.0*jnp.pi))**2
+        return 1.0 - (jnp.linalg.norm(r_goal - r_slider)*1.5 + (jnp.abs(theta_goal - theta_slider) / (2.0*jnp.pi))*1.5)
 
     def _get_done(self, pipeline_state: pipeline.State) -> jnp.ndarray:
         done = (self._get_reward(pipeline_state) > 0.95)
@@ -69,11 +69,12 @@ def main():
     env_reset = jax.jit(env.reset)
     state = env_reset(rng)
     rollout = [state.pipeline_state]
-    for _ in range(100):
+    for _ in range(50):
         rng, rng_act = jax.random.split(rng)
         act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
         state = env_step(state, act)
         rollout.append(state.pipeline_state)
+        print(state.reward)
     webpage = html.render(env.sys.replace(dt=env.dt), rollout)
     with open("../figure/pushT.html", "w") as f:
         f.write(webpage)

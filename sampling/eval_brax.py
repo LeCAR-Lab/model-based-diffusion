@@ -17,15 +17,19 @@ config.update("jax_enable_x64", True) # NOTE: this is important for simulating l
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "pushT"
 backend = "positional"
-env = envs.get_environment(env_name=env_name, backend=backend)
+if env_name == "pushT":
+    from pushT import PushT
+    env = PushT()
+else:
+    env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
 
 ## train
-if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher', 'humanoid', 'humanoidstandup']:
+if env_name in ['ant', 'pusher', 'halfcheetah', 'pusher', 'humanoid', 'humanoidstandup', 'pushT']:
     normalize = running_statistics.normalize
     ppo_network = ppo_networks.make_ppo_networks(
         state.obs.shape[-1], env.action_size, preprocess_observations_fn=normalize
@@ -59,6 +63,9 @@ if env_name in ['hopper', 'walker2d']:
 elif env_name in ['humanoid', 'humanoidstandup']:
     Heval = 100
     substeps = 2
+elif env_name in ["pushT"]:
+    Heval = 100
+    substeps = 1
 else:
     Heval = 50
     substeps = 1
@@ -80,7 +87,10 @@ with open(f"{path}/RL.html", "w") as f:
 ## run us_policy in new backend
 backend_test = "positional"
 noise = 0.0
-env_test = envs.get_environment(env_name=env_name, backend=backend_test)
+if env_name == "pushT":
+    env_test = PushT()
+else:
+    env_test = envs.get_environment(env_name=env_name, backend=backend_test)
 state_test = jax.jit(env_test.reset)(rng=rng_reset)
 jit_env_step_test = jax.jit(env_test.step)
 rollout = []

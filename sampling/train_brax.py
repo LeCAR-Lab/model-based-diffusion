@@ -222,7 +222,7 @@ model.save_params(f"{path}/params", params)
 # @title Visualizing a trajectory of the learned inference function
 
 # create an env with auto-reset
-env = envs.create(env_name=env_name, backend=backend)
+# env = envs.create(env_name=env_name, backend=backend)
 
 inference_fn = make_inference_fn(params)
 
