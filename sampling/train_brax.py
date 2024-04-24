@@ -121,8 +121,8 @@ train_fn = {
     ),
     "pushT": functools.partial(
         ppo.train,
-        num_timesteps=10_000_000,
-        num_evals=20,
+        num_timesteps=1_000_000,
+        num_evals=100,
         reward_scaling=5,
         episode_length=100,
         normalize_observations=True,
@@ -197,13 +197,14 @@ def progress(num_steps, metrics):
     times.append(datetime.now())
     xdata.append(num_steps)
     ydata.append(metrics["eval/episode_reward"])
-    ax.clear()
-    ax.set_xlim([0, train_fn.keywords["num_timesteps"]])
-    ax.set_ylim([min_y, max_y])
-    ax.set_xlabel("# environment steps")
-    ax.set_ylabel("reward per episode")
-    ax.plot(xdata, ydata)
-    plt.pause(0.01)
+    print(f"step: {num_steps}, reward: {metrics['eval/episode_reward']:.2f}")
+    # ax.clear()
+    # ax.set_xlim([0, train_fn.keywords["num_timesteps"]])
+    # ax.set_ylim([min_y, max_y])
+    # ax.set_xlabel("# environment steps")
+    # ax.set_ylabel("reward per episode")
+    # ax.plot(xdata, ydata)
+    # plt.pause(0.01)
 
 
 make_inference_fn, params, _ = train_fn(environment=env, progress_fn=progress)
