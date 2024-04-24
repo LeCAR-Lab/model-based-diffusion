@@ -7,7 +7,6 @@ from matplotlib.patches import Circle, Rectangle
 from matplotlib import transforms
 import matplotlib.pyplot as plt
 from brax.io import html
-import epath
 
 from brax.io import mjcf
 
@@ -48,12 +47,15 @@ class PushT(PipelineEnv):
         return jnp.concat([pipeline_state.q, pipeline_state.qd], axis=-1)
 
     def _get_reward(self, pipeline_state: pipeline.State) -> jnp.ndarray:
-        goal = pipeline_state.q[5:]
-        slider = pipeline_state.q[2:5]
-        return 1.0 - jnp.linalg.norm(goal - slider)
+        r_goal = pipeline_state.q[5:7]
+        r_slider = pipeline_state.q[2:4]
+        theta_goal = pipeline_state.q[7]
+        theta_slider = pipeline_state.q[4]
+        return 1.0 - jnp.linalg.norm(r_goal - r_slider)**2 - ((theta_goal - theta_slider) / (2.0*jnp.pi))**2
 
     def _get_done(self, pipeline_state: pipeline.State) -> jnp.ndarray:
-        return self._get_reward(pipeline_state) > 0.95
+        done = (self._get_reward(pipeline_state) > 0.95)
+        return done.astype(jnp.float32)
     
     @property
     def action_size(self):

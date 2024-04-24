@@ -18,7 +18,11 @@ parser.add_argument("--backend", type=str, default="positional")
 args = parser.parse_args()
 env_name = args.env_name
 backend = args.backend
-env = envs.get_environment(env_name=env_name, backend=backend)
+if env_name == "pushT":
+    from pushT import PushT
+    env = PushT()
+else:
+    env = envs.get_environment(env_name=env_name, backend=backend)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
@@ -115,6 +119,24 @@ train_fn = {
         batch_size=512,
         seed=3,
     ),
+    "pushT": functools.partial(
+        ppo.train,
+        num_timesteps=50_000_000,
+        num_evals=20,
+        reward_scaling=5,
+        episode_length=100,
+        normalize_observations=True,
+        action_repeat=1,
+        unroll_length=10,
+        num_minibatches=16,
+        num_updates_per_batch=8,
+        discounting=0.95,
+        learning_rate=3e-4,
+        entropy_cost=1e-2,
+        num_envs=2048,
+        batch_size=512,
+        seed=0,
+    ),
     "humanoid": functools.partial(
         ppo.train,
         num_timesteps=50_000_000,
@@ -162,8 +184,9 @@ max_y = {
     "reacher": 5,
     "walker2d": 5000,
     "pusher": 0,
+    "pushT": 100, 
 }[env_name]
-min_y = {"reacher": -100, "pusher": -150}.get(env_name, 0)
+min_y = {"reacher": -100, "pusher": -150, "pushT": -50}.get(env_name, 0)
 
 fig, ax = plt.subplots()
 xdata, ydata = [], []
