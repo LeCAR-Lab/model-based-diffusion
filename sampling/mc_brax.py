@@ -21,7 +21,7 @@ init_data = False
 
 ## setup env
 
-env_name = "walker2d"
+env_name = "halfcheetah"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -56,7 +56,7 @@ if not os.path.exists(path):
 
 ## run diffusion
 
-Nexp = 1
+Nexp = 8
 Nsample = 1024
 Hsample = 50
 Ndiffuse = 100
@@ -125,15 +125,17 @@ def reverse_once(carry, unused):
         ]
         deltaY0 = Y0_data - Y0_hat
         Y0s = jnp.where(data_mask, Y0s + deltaY0, Y0s)
+        eps_u = (Y0s - Y0_hat) / sigmas[t]
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
     eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
     logpdss = -0.5 * jnp.mean(eps_Y**2, axis=-1) + 0.5 * jnp.mean(eps_u**2, axis=-1)
     logpds = logpdss.mean(axis=-1)
-    logpds_normed = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
+    # logpds_normed = jnp.clip(logpds - logpds.max(), -1.0, 0.0)
+    # logpds_normed = logpds
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
     rews_normed = (rews - rews.mean()) / rews.std()
-    logweight = rews_normed + logpds_normed
+    logweight = rews_normed + logpds
     weights = jax.nn.softmax(logweight / temp_sample)
     # Get new Y0_hat
     Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
