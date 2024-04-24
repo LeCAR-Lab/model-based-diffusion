@@ -6,73 +6,75 @@ from brax.generalized import pipeline
 from matplotlib.patches import Circle, Rectangle
 from matplotlib import transforms
 import matplotlib.pyplot as plt
+from brax.io import html
+import epath
 
 from brax.io import mjcf
 
 
 class PushT(PipelineEnv):
     def __init__(self, backend: str = "generalized"):
-        self._dt = 0.02
-        self._reset_count = 0
-        self._step_count = 0
-        sys = mjcf.loads(
-            """
-            <mujoco>
-            <option timestep="0.02" integrator="Euler" gravity="0 0 -9.81"/>
+        sys = mjcf.load("pushT.xml")
 
-            <worldbody>
-                <body name="sphere1" pos="0.0 0 0.0">
-                    <geom name="sphere1_geom" type="sphere" size="0.1" rgba="1 0 0 1" friction="1 0.001 0.0001" mass="0.5"/>
-                    <joint name="sphere1_x" type="slide" axis="1 0 0" limited="true" range="-2 2"/>
-                    <joint name="sphere1_y" type="slide" axis="0 1 0" limited="true" range="-2 2"/>
-                </body>
-
-                <body name="box" pos="0.0 0 0.0">
-                    <geom name="box_geom" type="box" size="0.3 0.1 0.1" rgba="0 0 1 1" friction="1 0.1 0.1" mass="0.1"/>
-                    <joint name="box_x" type="slide" axis="1 0 0" limited="true" range="-2 2"/>
-                    <joint name="box_y" type="slide" axis="0 1 0" limited="true" range="-2 2"/>
-                    <joint name="box_z_rot" type="hinge" axis="0 0 1" limited="true" range="-3.14159 3.14159"/>
-                </body>
-            </worldbody>
-
-            <actuator>
-                <motor name="sphere1_x_motor" joint="sphere1_x" gear="1" />
-                <motor name="sphere1_y_motor" joint="sphere1_y" gear="1" />
-            </actuator>
-            </mujoco>
-        """
-        )
-
-        super().__init__(sys, backend=backend, n_frames=10)
+        super().__init__(sys, backend=backend, n_frames=20)
 
     def reset(self, rng: jnp.ndarray) -> State:
-        
+        rng, rng_goal_xy = jax.random.split(rng)
+
+        q = self.sys.init_q
+        q = q.at[:2].set(jnp.array([0.1, -0.15]))
+        q = q.at[5:].set(
+            jax.random.uniform(rng_goal_xy, (3,), minval=-1.0, maxval=1.0)
+            * jnp.array([0.5, 0.5, jnp.pi])
+        )
+        qd = jnp.zeros(self.sys.qd_size())
+        pipeline_state = self.pipeline_init(q, qd)
+        obs = self._get_obs(pipeline_state)
+        reward = self._get_reward(pipeline_state)
+        done = self._get_done(pipeline_state)
+        metrics = {}
+        return State(pipeline_state, obs, reward, done, metrics)
+
+    def step(self, state: State, action: jnp.ndarray) -> State:
+        pipeline_state = self.pipeline_step(state.pipeline_state, action)
+        obs = self._get_obs(pipeline_state)
+        reward = self._get_reward(pipeline_state)
+        done = self._get_done(pipeline_state)
+        return state.replace(
+            pipeline_state=pipeline_state, obs=obs, reward=reward, done=done
+        )
+
+    def _get_obs(self, pipeline_state: pipeline.State) -> jnp.ndarray:
+        return jnp.concat([pipeline_state.q, pipeline_state.qd], axis=-1)
+
+    def _get_reward(self, pipeline_state: pipeline.State) -> jnp.ndarray:
+        goal = pipeline_state.q[5:]
+        slider = pipeline_state.q[2:5]
+        return 1.0 - jnp.linalg.norm(goal - slider)
+
+    def _get_done(self, pipeline_state: pipeline.State) -> jnp.ndarray:
+        return self._get_reward(pipeline_state) > 0.95
+    
+    @property
+    def action_size(self):
+        return 2
 
 
+def main():
+    env = PushT()
+    rng = jax.random.PRNGKey(1)
+    env_step = jax.jit(env.step)
+    env_reset = jax.jit(env.reset)
+    state = env_reset(rng)
+    rollout = [state.pipeline_state]
+    for _ in range(100):
+        rng, rng_act = jax.random.split(rng)
+        act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
+        state = env_step(state, act)
+        rollout.append(state.pipeline_state)
+    webpage = html.render(env.sys.replace(dt=env.dt), rollout)
+    with open("../figure/pushT.html", "w") as f:
+        f.write(webpage)
 
-
-def visualize(ax, pos):
-    ax.clear()
-    ax.set_xlim(-2, 2)
-    ax.set_ylim(-2, 2)
-    ax.add_patch(Circle((pos[0], pos[1]), 0.1, color="r"))
-    rec = Rectangle((-0.3, -0.1), 0.6, 0.2, color="b")
-    t = transforms.Affine2D().rotate(pos[4]).translate(pos[2], pos[3])
-    rec.set_transform(t + ax.transData)
-    ax.add_patch(rec)
-    ax.set_xlim(-2, 2)
-    ax.set_ylim(-2, 2)
-    ax.grid(True)
-    ax.set_aspect("equal", adjustable="box")
-
-
-fig, ax = plt.subplots()
-# visualize(ax, [0, 0, 1, 0])
-
-init_q = jnp.array([0.3, -0.2, 0.0, 0, 0.0])
-state = jax.jit(pipeline.init)(scene, init_q, jnp.zeros(scene.qd_size()))
-
-for _ in range(100):
-    state = jax.jit(pipeline.step)(scene, state, jnp.array([0.0, 1.0]))
-    visualize(ax, state.q)
-    plt.pause(0.1)
+if __name__ == "__main__":
+    main()
