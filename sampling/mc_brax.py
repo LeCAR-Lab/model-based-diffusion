@@ -16,12 +16,12 @@ config.update("jax_enable_x64", True) # NOTE: this is important for simulating l
 
 ## global config
 
-use_data = True
+use_data = False
 init_data = False
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "pushT"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -29,7 +29,11 @@ elif env_name in ["humanoid", "humanoidstandup"]:
     substeps = 2
 else:
     substeps = 1
-env = envs.get_environment(env_name=env_name, backend=backend)
+if env_name == "pushT":
+    from pushT import PushT
+    env = PushT()
+else:
+    env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
 Nu = env.action_size
 step_env_jit = jax.jit(env.step)

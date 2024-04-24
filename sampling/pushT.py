@@ -15,7 +15,7 @@ class PushT(PipelineEnv):
     def __init__(self, backend: str = "generalized"):
         sys = mjcf.load("pushT.xml")
 
-        super().__init__(sys, backend=backend, n_frames=20)
+        super().__init__(sys, backend=backend, n_frames=10)
 
     def reset(self, rng: jnp.ndarray) -> State:
         rng, rng_goal_xy = jax.random.split(rng)
@@ -60,6 +60,10 @@ class PushT(PipelineEnv):
     @property
     def action_size(self):
         return 2
+    
+    @property
+    def observation_size(self):
+        return 16
 
 
 def main():
@@ -74,7 +78,6 @@ def main():
         act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
         state = env_step(state, act)
         rollout.append(state.pipeline_state)
-        print(state.reward)
     webpage = html.render(env.sys.replace(dt=env.dt), rollout)
     with open("../figure/pushT.html", "w") as f:
         f.write(webpage)

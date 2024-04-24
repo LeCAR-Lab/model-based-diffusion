@@ -1,5 +1,5 @@
 <mujoco model="pushT">
-    <option timestep="0.002" integrator="Euler" gravity="0 0 0.0" />
+    <option timestep="0.005" integrator="Euler" gravity="0 0 0.0" />
 
     <worldbody>
 
@@ -40,8 +40,8 @@
     </worldbody>
 
     <actuator>
-        <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="30" kv="10"/>
-        <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="30" kv="10"/>
+        <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/>
+        <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/>
         <!-- <motor name="pusher_x" joint="pusher_x" ctrlrange="-1 1" />
         <motor name="pusher_y" joint="pusher_y" ctrlrange="-1 1" /> -->
     </actuator>
