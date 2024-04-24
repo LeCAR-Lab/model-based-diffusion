@@ -13,12 +13,14 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
+config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+
 ## setup env
 
 env_name = "halfcheetah"
 backend = "positional"
 env = envs.get_environment(env_name=env_name, backend=backend)
-rng = jax.random.PRNGKey(seed=1)
+rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
 

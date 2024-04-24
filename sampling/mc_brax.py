@@ -12,11 +12,11 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
 ## global config
 
-use_data = False
+use_data = True
 init_data = False
 
 ## setup env
@@ -35,6 +35,7 @@ Nu = env.action_size
 step_env_jit = jax.jit(env.step)
 
 if substeps > 1:
+
     @jax.jit
     def step_env(state, u):
         def step_once(state, unused):
@@ -43,6 +44,7 @@ if substeps > 1:
         state, rews = lax.scan(step_once, state, None, length=substeps)
         state = state.replace(reward=rews.mean())
         return state
+
 else:
     step_env = step_env_jit
 
@@ -60,6 +62,7 @@ Nexp = 8
 Nsample = 1024
 Hsample = 50
 Ndiffuse = 100
+# temp_sample = 0.5
 temp_sample = 0.5
 betas = jnp.linspace(1e-4, 1e-2, Ndiffuse)
 alphas = 1.0 - betas
@@ -117,15 +120,16 @@ def reverse_once(carry, unused):
     rng, Y0s_rng = jax.random.split(rng)
     eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
     Y0s = Y0_hat + eps_u * sigmas[t]
+
     if use_data:
-        p_data = t / (Ndiffuse - 1)
+        p_data = (t) / (Ndiffuse-1)
         rng, data_rng = jax.random.split(rng)
-        data_mask = (jax.random.uniform(data_rng, (Nsample, Hsample)) < p_data)[
-            ..., None
-        ]
+        data_mask = jax.random.bernoulli(data_rng, p=p_data, shape=(Nsample, Hsample, Nu))
         deltaY0 = Y0_data - Y0_hat
         Y0s = jnp.where(data_mask, Y0s + deltaY0, Y0s)
+        Y0s = Y0s.at[0].set(Y0_data)
         eps_u = (Y0s - Y0_hat) / sigmas[t]
+
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
     eps_Y = (Y0s * jnp.sqrt(alphas_bar[t]) - Yt) / sigmas[t]
@@ -137,6 +141,7 @@ def reverse_once(carry, unused):
     rews_normed = (rews - rews.mean()) / rews.std()
     logweight = rews_normed + logpds
     weights = jax.nn.softmax(logweight / temp_sample)
+    # jax.debug.print("max weight = {x} max rew={y} rew = {z} \pm {w}", x=weights.max(), y=rews.max(), z=rews.mean(), w=rews.std())
     # Get new Y0_hat
     Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
 
