@@ -21,7 +21,7 @@ init_data = False
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "pushT"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -53,7 +53,7 @@ else:
     step_env = step_env_jit
 
 reset_env = jax.jit(env.reset)
-rng = jax.random.PRNGKey(seed=1)
+rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
 state_init = reset_env(rng_reset)
 path = f"../figure/{env_name}/{backend}"
