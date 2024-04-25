@@ -12,7 +12,7 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
 ## global config
 
@@ -141,8 +141,23 @@ def reverse_once(carry, unused):
     # sample Y0s from Y0_hat
     rng, Y0s_rng = jax.random.split(rng)
     eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
-    Y0s = eps_u * sigmas[t] + Y0_hat
-    logpdss_Y0 = -0.5 * jnp.mean(eps_u**2, axis=-1)
+    rew_Y0_hat = eval_us(state_init, Y0_hat).mean()
+    rew_Yt = eval_us(state_init, Yt/jnp.sqrt(alphas_bar[t])).mean()
+    k_Y0_hat = jax.nn.softmax(jnp.array([rew_Y0_hat, rew_Yt]) / temp_sample)[0]
+    N_Y0_hat = jnp.int32(Nsample * k_Y0_hat)
+    sample_Y0_hat_mask = jnp.arange(Nsample) < N_Y0_hat
+    Y0_mean1 = jnp.repeat(Y0_hat[None], Nsample, axis=0)
+    Y0_mean2 = jnp.repeat((Yt/jnp.sqrt(alphas_bar[t]))[None], Nsample, axis=0)
+    Y0s_mean = jnp.where(sample_Y0_hat_mask[:, None, None], Y0_mean1, Y0_mean2)
+    Y0s = eps_u * sigmas[t] + Y0s_mean
+    eps_u_Y0_hat = (Y0s - Y0_mean1) / sigmas[t]
+    eps_u_Yt = (Y0s - Y0_mean2) / sigmas[t]
+    logpdss_Y0_1 = -0.5 * jnp.mean(eps_u_Y0_hat**2, axis=-1)
+    logpdss_Y0_2 = -0.5 * jnp.mean(eps_u_Yt**2, axis=-1)
+    logpdss_Y0 = k_Y0_hat * logpdss_Y0_1 + (1 - k_Y0_hat) * logpdss_Y0_2
+    jax.debug.print("======")
+    jax.debug.print("k_Y0_hat = {x} \n rew_Y0_hat={y} \n rew_Yt={z}", 
+                    x=k_Y0_hat, y=rew_Y0_hat, z=rew_Yt)
 
     if use_data:
         p_data = (t) / (Ndiffuse-1)
@@ -165,6 +180,7 @@ def reverse_once(carry, unused):
     weights = jax.nn.softmax(logweight / temp_sample)
     weights_rew = jax.nn.softmax(rews_normed / temp_sample)
     Y0_bar = jnp.einsum("n,nij->ij", weights, Y0s)
+    # Get new Y0_hat
     Y0_hat_new = jnp.einsum("n,nij->ij", weights_rew, Y0s) # NOTE: update only with reward
 
     # Method2: sample around Yt P(Yt)
