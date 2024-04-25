@@ -13,11 +13,11 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
 ## setup env
 
-env_name = "pushT"
+env_name = "halfcheetah"
 backend = "positional"
 if env_name == "pushT":
     from pushT import PushT

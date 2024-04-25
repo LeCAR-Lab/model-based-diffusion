@@ -12,7 +12,7 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
 ## global config
 
@@ -21,7 +21,7 @@ init_data = False
 
 ## setup env
 
-env_name = "pushT"
+env_name = "halfcheetah"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -66,9 +66,8 @@ Nexp = 8
 Nsample = 1024
 Hsample = 50
 Ndiffuse = 100
-# temp_sample = 0.5
 temp_sample = 0.5
-betas = jnp.linspace(1e-4, 1e-2, Ndiffuse)
+betas = jnp.linspace(5e-5, 3e-2, Ndiffuse)
 alphas = 1.0 - betas
 alphas_bar = jnp.cumprod(alphas)
 sigmas = jnp.sqrt(1 - alphas_bar)
@@ -145,9 +144,10 @@ def reverse_once(carry, unused):
     rews_normed = (rews - rews.mean()) / rews.std()
     logweight = rews_normed + logpds
     weights = jax.nn.softmax(logweight / temp_sample)
+    weights_rew = jax.nn.softmax(rews_normed / temp_sample)
     # jax.debug.print("max weight = {x} max rew={y} rew = {z} \pm {w}", x=weights.max(), y=rews.max(), z=rews.mean(), w=rews.std())
     # Get new Y0_hat
-    Y0_hat_new = jnp.einsum("n,nij->ij", weights, Y0s)
+    Y0_hat_new = jnp.einsum("n,nij->ij", weights_rew, Y0s) # NOTE: update only with reward
 
     # Method2: sample around Yt P(Yt)
     # rng, Y0s_rng = jax.random.split(rng)
