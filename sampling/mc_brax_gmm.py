@@ -71,7 +71,7 @@ Nexp = 16
 Nsample = 1024
 Hsample = 50
 if env_name == "point":
-    Nsample = 64
+    Nsample = 128
     Hsample = 20
 Ndiffuse = 100
 temp_sample = 0.5
@@ -103,11 +103,13 @@ def eval_us(state, us):
     _, rews = jax.lax.scan(step, state, us)
     return rews
 
+
 @jax.jit
 def rollout_us(state, us):
     def step(state, u):
         state = step_env(state, u)
         return state, state.obs
+
     _, rollout = jax.lax.scan(step, state, us)
     return rollout
 
@@ -149,18 +151,28 @@ def reverse_once(carry, unused):
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
 
     rews_normed = (rews - rews.mean()) / rews.std()
-    logs_Y0_bar = rews_normed + logpds
-    logs_Y0_hat_new = logs_Y0_hat + rews_normed / temp_sample
-    std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    Y0s_bar = jnp.einsum("mn,nij->mij", jax.nn.softmax(logs_Y0_bar / temp_sample, axis=-1), Y0s)  # (Nexp, Hsample, Nu)
+    logs_Y0_bar = (rews_normed + logpds) / temp_sample
+    scale_log = (1.0 - t / (Ndiffuse - 1)) * 0.8 + 0.2 # NOTE: schedule for temperature
+    logs_Y0_hat_new = rews_normed / temp_sample * scale_log
+    Y0s_bar = jnp.einsum(
+        "mn,nij->mij", jax.nn.softmax(logs_Y0_bar, axis=-1), Y0s
+    )  # (Nexp, Hsample, Nu)
+
+    # rng, idx_rng = jax.random.split(rng)
+    # idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
+    # Y0s_hat_new = Y0s[idx]
+    # logs_Y0_hat_new = jnp.zeros(Nsample)
 
     rng, idx_rng = jax.random.split(rng)
-    need_resample = std_w_rew > 5e-2
+    std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
+    need_resample = std_w_rew > 0.0e-2 # NOTE: enable resampling
     idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
     logs_Y0_hat_new_resample = jnp.zeros(Nsample)
     Y0s_hat_new = need_resample * Y0s_hat_new_resample + (1 - need_resample) * Y0s
-    logs_Y0_hat_new = need_resample * logs_Y0_hat_new_resample + (1 - need_resample) * logs_Y0_hat
+    logs_Y0_hat_new = (
+        need_resample * logs_Y0_hat_new_resample + (1 - need_resample) * logs_Y0_hat
+    )
 
     # calculate score function
     scores = (
@@ -192,9 +204,9 @@ def reverse(Y0s_hat, logs_Y0_hat, Yts, rng):
     for i in range(Ndiffuse):
         carry_once, rew = reverse_once(carry_once, None)
         if env_name == "point":
-            Y0s_hat = carry_once[2] # (Nsample, Hsample, Nu)
+            Y0s_hat = carry_once[2]  # (Nsample, Hsample, Nu)
             X0s_hat = jax.vmap(rollout_us, in_axes=(None, 0))(state_init, Y0s_hat)
-            vis_env(ax, X0s_hat)
+            vis_env(ax, X0s_hat[:16])
             plt.savefig(f"{path}/{i}.png")
             plt.savefig("../figure/point.png")
 
