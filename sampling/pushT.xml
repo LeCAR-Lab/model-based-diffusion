@@ -46,8 +46,8 @@
     <actuator>
         <!-- <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/>
         <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/> -->
-        <motor name="pusher_x" joint="pusher_x" ctrlrange="-1 1" gear="10" />
-        <motor name="pusher_y" joint="pusher_y" ctrlrange="-1 1" gear="10" />
+        <motor name="pusher_x" joint="pusher_x" ctrlrange="-1 1" gear="30" />
+        <motor name="pusher_y" joint="pusher_y" ctrlrange="-1 1" gear="30" />
     </actuator>
 
 </mujoco>
