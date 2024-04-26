@@ -152,7 +152,7 @@ def reverse_once(carry, unused):
 
     rews_normed = (rews - rews.mean()) / rews.std()
     logs_Y0_bar = (rews_normed + logpds) / temp_sample
-    scale_log = (1.0 - t / (Ndiffuse - 1)) * 0.8 + 0.2 # NOTE: schedule for temperature
+    scale_log = (1.0 - t / (Ndiffuse - 1)) * 0.0 + 1.0 # NOTE: schedule for temperature
     logs_Y0_hat_new = rews_normed / temp_sample * scale_log
     Y0s_bar = jnp.einsum(
         "mn,nij->mij", jax.nn.softmax(logs_Y0_bar, axis=-1), Y0s
@@ -187,8 +187,11 @@ def reverse_once(carry, unused):
         + 1.0 * jnp.sqrt(betas[t]) * eps_Ytm1
     )
 
+    jax.debug.print("=============t={x}============", x=t)
     jax.debug.print("std_w_rew={x}", x=std_w_rew)
     jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
+    jax.debug.print("Y0 hat best = {x}", x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s_hat).mean(axis=-1).max())
+    jax.debug.print("Yt best = {x}", x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Yts/jnp.sqrt(alphas_bar[t])).mean(axis=-1).max())
 
     return (t - 1, rng, Y0s_hat_new, logs_Y0_hat_new, Ytsm1), rews.mean()
 
