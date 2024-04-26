@@ -21,7 +21,7 @@ init_data = False
 
 ## setup env
 
-env_name = "pushT"
+env_name = "point"
 backend = "positional"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
@@ -33,6 +33,10 @@ if env_name == "pushT":
     from pushT import PushT
 
     env = PushT()
+elif env_name == "point":
+    from point import Point, vis_env
+
+    env = Point()
 else:
     env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
@@ -64,8 +68,11 @@ if not os.path.exists(path):
 ## run diffusion
 
 Nexp = 16
-Nsample = 1024 * 4
+Nsample = 1024
 Hsample = 50
+if env_name == "point":
+    Nsample = 64
+    Hsample = 20
 Ndiffuse = 100
 temp_sample = 0.5
 beta0 = 1e-4
@@ -81,7 +88,7 @@ print(f"init sigma = {sigmas[-1]:.2e}")
 
 rng, rng_y0 = jax.random.split(rng)
 Y0s_hat = jax.random.normal(rng_y0, (Nsample, Hsample, Nu))
-weights_Y0_hat = jnp.ones(Nsample) / Nsample
+logs_Y0_hat = jnp.zeros(Nsample)
 rng, rng_y = jax.random.split(rng)
 Yts = jax.random.normal(rng_y, (Nexp, Hsample, Nu))
 
@@ -95,6 +102,14 @@ def eval_us(state, us):
 
     _, rews = jax.lax.scan(step, state, us)
     return rews
+
+@jax.jit
+def rollout_us(state, us):
+    def step(state, u):
+        state = step_env(state, u)
+        return state, state.obs
+    _, rollout = jax.lax.scan(step, state, us)
+    return rollout
 
 
 def render_us(state, us, name="rollout"):
@@ -114,7 +129,7 @@ def render_us(state, us, name="rollout"):
 
 @jax.jit
 def reverse_once(carry, unused):
-    t, rng, Y0s_hat, weights_Y0_hat, Yts = carry
+    t, rng, Y0s_hat, logs_Y0_hat, Yts = carry
 
     # Method1: sampling around Y0_hat q(Y0)
     # sample Y0s from Y0s_hat
@@ -133,27 +148,19 @@ def reverse_once(carry, unused):
     logpds = logpdss.mean(axis=-1)  # (Nexp, Nsample)
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
 
-    jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
-
     rews_normed = (rews - rews.mean()) / rews.std()
-    logweight = rews_normed + logpds
-    weights_Y0_bar = jax.nn.softmax(logweight / temp_sample, axis=-1)  # (Nexp, Nsample)
-    weights_Y0_hat_new = jax.nn.softmax(
-        rews_normed / temp_sample + jnp.log(weights_Y0_hat), axis=-1
-    )  # (Nexp, Nsample)
-    std_w_rew = jnp.std(weights_Y0_hat_new, axis=-1).mean()
-    jax.debug.print("std_w_rew={x}", x=std_w_rew)
-    Y0s_bar = jnp.einsum("mn,nij->mij", weights_Y0_bar, Y0s)  # (Nexp, Hsample, Nu)
+    logs_Y0_bar = rews_normed + logpds
+    logs_Y0_hat_new = logs_Y0_hat + rews_normed / temp_sample
+    std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
+    Y0s_bar = jnp.einsum("mn,nij->mij", jax.nn.softmax(logs_Y0_bar / temp_sample, axis=-1), Y0s)  # (Nexp, Hsample, Nu)
+
     rng, idx_rng = jax.random.split(rng)
-    need_resample = std_w_rew > 1e-4
-    idx = jax.random.categorical(idx_rng, rews_normed / temp_sample, shape=(Nsample,))
+    need_resample = std_w_rew > 5e-2
+    idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
-    weights_Y0_hat_new_resample = jnp.ones(Nsample) / Nsample
+    logs_Y0_hat_new_resample = jnp.zeros(Nsample)
     Y0s_hat_new = need_resample * Y0s_hat_new_resample + (1 - need_resample) * Y0s
-    weights_Y0_hat_new = (
-        need_resample * weights_Y0_hat_new_resample
-        + (1 - need_resample) * weights_Y0_hat_new
-    )
+    logs_Y0_hat_new = need_resample * logs_Y0_hat_new_resample + (1 - need_resample) * logs_Y0_hat
 
     # calculate score function
     scores = (
@@ -168,26 +175,38 @@ def reverse_once(carry, unused):
         + 1.0 * jnp.sqrt(betas[t]) * eps_Ytm1
     )
 
-    return (t - 1, rng, Y0s_hat_new, weights_Y0_hat_new, Ytsm1), rews.mean()
+    jax.debug.print("std_w_rew={x}", x=std_w_rew)
+    jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
+
+    return (t - 1, rng, Y0s_hat_new, logs_Y0_hat_new, Ytsm1), rews.mean()
 
 
 # run reverse
-def reverse(Y0s_hat, weights_Y0_hat, Yts, rng):
-    carry_once = (Ndiffuse - 1, rng, Y0s_hat, weights_Y0_hat, Yts)
-    (t0, rng, Y0s_hat, weights_Y0_hat, Y0s), rew = jax.lax.scan(
-        reverse_once, carry_once, None, Ndiffuse
-    )
-    # for i in range(Ndiffuse):
-    #     carry_once, rew = reverse_once(carry_once, None)
-    # (tT, rng, Y0_hat, Y0), rew = carry_once
+def reverse(Y0s_hat, logs_Y0_hat, Yts, rng):
+    carry_once = (Ndiffuse - 1, rng, Y0s_hat, logs_Y0_hat, Yts)
+    # (t0, rng, Y0s_hat, weights_Y0_hat, Y0s), rew = jax.lax.scan(
+    #     reverse_once, carry_once, None, Ndiffuse
+    # )
+    fig, ax = plt.subplots()
+
+    for i in range(Ndiffuse):
+        carry_once, rew = reverse_once(carry_once, None)
+        if env_name == "point":
+            Y0s_hat = carry_once[2] # (Nsample, Hsample, Nu)
+            X0s_hat = jax.vmap(rollout_us, in_axes=(None, 0))(state_init, Y0s_hat)
+            vis_env(ax, X0s_hat)
+            plt.savefig(f"{path}/{i}.png")
+            plt.savefig("../figure/point.png")
+
+    (tT, rng, Y0_hat, Y0), rew = carry_once
     rng, rng_Y0 = jax.random.split(rng)
-    idx = jax.random.categorical(rng_Y0, weights_Y0_hat, shape=(Nsample,))
+    idx = jax.random.categorical(rng_Y0, logs_Y0_hat, shape=(Nsample,))
     Y0s_hat = Y0s_hat[idx]
     return Y0s_hat, Y0s, rew
 
 
 rng, rng_exp = jax.random.split(rng)
-Y0s_hat, Y0s, rew_exp = reverse(Y0s_hat, weights_Y0_hat, Yts, rng_exp)
+Y0s_hat, Y0s, rew_exp = reverse(Y0s_hat, logs_Y0_hat, Yts, rng_exp)
 rew_eval = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s_hat).mean(axis=-1)
 print(f"rews mean: {rew_eval.mean():.2e} std: {rew_eval.std():.2e}")
 
