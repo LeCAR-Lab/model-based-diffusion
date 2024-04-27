@@ -134,26 +134,38 @@ def reverse_once(carry, unused):
     t, rng, Y0s_hat, logs_Y0_hat, Yts = carry
 
     # Method1: sampling around Y0_hat q(Y0)
-    # sample Y0s from Y0s_hat
+    # sample Y0 from q(Y0)
     rng, Y0s_rng = jax.random.split(rng)
     eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
     Y0s = eps_u * sigmas[t] + Y0s_hat  # (Nsample, Hsample, Nu)
-    logpds_Y0 = -0.5 * jnp.mean(eps_u**2, axis=(1, 2)) + logs_Y0_hat # Question: is this correct? should we include eps_u?
-
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
+    # q(Y0)
+    eps_Y0s = (Y0s[None] - Y0s_hat[:, None]).mean(
+        axis=[2, 3]
+    )  # (Nsample Y0s_hat, Nsample Y0s)
+    p_Y0s = jnp.exp(
+        -0.5 * eps_Y0s**2 / sigmas[t] ** 2
+    )  # (Nsample Y0s_hat, Nsample Y0s)
+    weight_mixture = jax.nn.softmax(logs_Y0_hat)  # (Nsample Y0s_hat)
+    p_Y0s = jnp.einsum("i, ij->j", weight_mixture, p_Y0s)  # (Nsample Y0s)
+    logq_Y0 = jnp.log(p_Y0s)
+
     # calculate reward for Y0s
-    eps_Y = jnp.clip(
+    eps_Yt = jnp.clip(
         (Y0s[None] * jnp.sqrt(alphas_bar[t]) - Yts[:, None]) / sigmas[t], -2.0, 2.0
     )  # (Nexp, Nsample, Hsample, Nu)
-    logpds_Yt = -0.5 * jnp.mean(eps_Y**2, axis=(2, 3))  # (Nexp, Nsample)
-    logpds = logpds_Yt - logpds_Y0  # (Nexp, Nsample)
+    logp_Yt_Y0 = -0.5 * jnp.mean(eps_Yt**2, axis=(2, 3))  # (Nexp, Nsample)
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
 
-    rews_normed = (rews - rews.mean()) / rews.std()
-    logs_Y0_bar = (rews_normed + logpds) / temp_sample
-    logs_Y0_hat_new = rews_normed / temp_sample - logpds_Y0 # Question: here we use logpds_Y0 instead of logpds?
+    rews_normed = (rews - rews.mean()) / rews.std()  # p(Y0)
+    logp_Y0 = rews_normed / temp_sample
+    logp_Y0_bar = logp_Y0 + logp_Yt_Y0 - logq_Y0  # p(Y0) * p(Yt|Y0) / q(Y0)
+
+    # p(Y0) / q(Y0)
+    logs_Y0_hat_new = logp_Y0 - logq_Y0
+
     Y0s_bar = jnp.einsum(
-        "mn,nij->mij", jax.nn.softmax(logs_Y0_bar, axis=-1), Y0s
+        "mn,nij->mij", jax.nn.softmax(logp_Y0_bar, axis=-1), Y0s
     )  # (Nexp, Hsample, Nu)
 
     # rng, idx_rng = jax.random.split(rng)
@@ -163,7 +175,7 @@ def reverse_once(carry, unused):
 
     rng, idx_rng = jax.random.split(rng)
     std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    need_resample = std_w_rew > 2.0e-2 # NOTE: enable resampling
+    need_resample = std_w_rew > 2.0e-2  # NOTE: enable resampling
     idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
     logs_Y0_hat_new_resample = jnp.zeros(Nsample)
@@ -188,8 +200,18 @@ def reverse_once(carry, unused):
     jax.debug.print("=============t={x}============", x=t)
     jax.debug.print("std_w_rew={x}", x=std_w_rew)
     jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
-    jax.debug.print("Y0 hat best = {x}", x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s_hat).mean(axis=-1).max())
-    jax.debug.print("Yt best = {x}", x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Yts/jnp.sqrt(alphas_bar[t])).mean(axis=-1).max())
+    jax.debug.print(
+        "Y0 hat best = {x}",
+        x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s_hat).mean(axis=-1).max(),
+    )
+    jax.debug.print(
+        "Yt best = {x}",
+        x=jax.vmap(eval_us, in_axes=(None, 0))(
+            state_init, Yts / jnp.sqrt(alphas_bar[t])
+        )
+        .mean(axis=-1)
+        .max(),
+    )
 
     return (t - 1, rng, Y0s_hat_new, logs_Y0_hat_new, Ytsm1), rews.mean()
 

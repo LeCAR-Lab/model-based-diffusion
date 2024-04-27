@@ -65,12 +65,12 @@ if not os.path.exists(path):
 Nexp = 1
 Nsample = 1024
 Hsample = 50
-Ndiffuse = 100
+Ndiffuse = 200
 temp_sample = 0.5
 beta0 = 1e-4
 betaT = 1e-2
 betas = jnp.linspace(beta0, betaT, Ndiffuse)
-# betas = jnp.exp(jnp.linspace(jnp.log(beta0), jnp.log(betaT), Ndiffuse))
+betas = jnp.exp(jnp.linspace(jnp.log(beta0), jnp.log(betaT), Ndiffuse))
 alphas = 1.0 - betas
 alphas_bar = jnp.cumprod(alphas)
 sigmas = jnp.sqrt(1 - alphas_bar)
@@ -78,7 +78,17 @@ Sigmas_cond = (1 - alphas) * (1 - jnp.sqrt(jnp.roll(alphas_bar, 1))) / (1 - alph
 sigmas_cond = jnp.sqrt(Sigmas_cond)
 sigmas_cond = sigmas_cond.at[0].set(0.0)
 print(f"init sigma = {sigmas[-1]:.2e}")
-# sigma0 = 1e-2
+# sigma0 = 1e-4
+# sigmaT = 1.0
+# k = ((sigma0 / sigmaT)**2) ** (1 / (Ndiffuse - 1))
+# vars = k ** (Ndiffuse - 1 - jnp.arange(Ndiffuse)) * (sigmaT**2)
+# sigmas = jnp.sqrt(vars)
+# plt.plot(sigmas)
+# plt.savefig(f"{path}/sigma.png")
+# print(f"init sigma = {sigmas[-1]:.2e}")
+# print(f"final sigma = {sigmas[0]:.2e}")
+# exit()
+# sigma0 = 9e-5
 # sigmaT = 0.9
 # sigmas = jnp.exp(jnp.linspace(jnp.log(sigma0), jnp.log(sigmaT), Ndiffuse))
 # alphas_bar = 1 - sigmas**2
@@ -165,10 +175,11 @@ def reverse_once(carry, unused):
     weights = jax.nn.softmax(logweight / temp_sample)
     weights_rew = jax.nn.softmax(rews_normed / temp_sample)
     Y0_bar = jnp.einsum("n,nij->ij", weights, Y0s)
+    
     Y0_hat_bar = jnp.einsum("n,nij->ij", weights_rew, Y0s) # NOTE: update only with reward
-    k = sigmas[t-1]**2 / sigmas[t]**2
+    k = (sigmas[t-1]**2 / sigmas[t]**2) 
     rng, Y0_hat_rng = jax.random.split(rng)
-    Y0_hat_new = k * Y0_hat + (1 - k) * Y0_hat_bar + jnp.sqrt(sigmas[t]**2 - sigmas[t-1]**2) * jax.random.normal(Y0_hat_rng, (Hsample, Nu))
+    Y0_hat_new = k * Y0_hat + (1 - k) * Y0_hat_bar + jnp.sqrt(sigmas[t]**2 - sigmas[t-1]**2) * jax.random.normal(Y0_hat_rng, (Hsample, Nu)) * 0.02
     Y0_hat_last = Y0_hat_bar
     Y0_hat_new = jnp.where(t == 0, Y0_hat_last, Y0_hat_new)
     jax.debug.print("k={x}", x=k)
