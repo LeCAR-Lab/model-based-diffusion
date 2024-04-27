@@ -140,11 +140,9 @@ def reverse_once(carry, unused):
     Y0s = eps_u * sigmas[t] + Y0s_hat  # (Nsample, Hsample, Nu)
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # q(Y0)
-    eps_Y0s = (Y0s[None] - Y0s_hat[:, None]).mean(
-        axis=[2, 3]
-    )  # (Nsample Y0s_hat, Nsample Y0s)
+    eps_Y0s = (Y0s[None] - Y0s_hat[:, None])  # (Nsample Y0s_hat, Nsample Y0s, Hsample, Nu)
     p_Y0s = jnp.exp(
-        -0.5 * eps_Y0s**2 / sigmas[t] ** 2
+        -0.5 * (eps_Y0s**2).mean(axis=[2, 3]) / sigmas[t] ** 2
     )  # (Nsample Y0s_hat, Nsample Y0s)
     weight_mixture = jax.nn.softmax(logs_Y0_hat)  # (Nsample Y0s_hat)
     p_Y0s = jnp.einsum("i, ij->j", weight_mixture, p_Y0s)  # (Nsample Y0s)
@@ -175,7 +173,7 @@ def reverse_once(carry, unused):
 
     rng, idx_rng = jax.random.split(rng)
     std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    need_resample = std_w_rew > 3.0e-2  # NOTE: enable resampling
+    need_resample = std_w_rew > 2.0e-2  # NOTE: enable resampling
     idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
     logs_Y0_hat_new_resample = jnp.zeros(Nsample)
