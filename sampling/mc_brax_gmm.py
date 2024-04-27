@@ -175,7 +175,7 @@ def reverse_once(carry, unused):
 
     rng, idx_rng = jax.random.split(rng)
     std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    need_resample = std_w_rew > 2.0e-2  # NOTE: enable resampling
+    need_resample = std_w_rew > 3.0e-2  # NOTE: enable resampling
     idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
     logs_Y0_hat_new_resample = jnp.zeros(Nsample)
