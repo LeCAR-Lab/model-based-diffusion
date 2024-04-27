@@ -138,22 +138,20 @@ def reverse_once(carry, unused):
     rng, Y0s_rng = jax.random.split(rng)
     eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
     Y0s = eps_u * sigmas[t] + Y0s_hat  # (Nsample, Hsample, Nu)
-    logpdss_Y0 = -0.5 * jnp.mean(eps_u**2, axis=-1)
+    logpds_Y0 = -0.5 * jnp.mean(eps_u**2, axis=(1, 2)) + logs_Y0_hat # Question: is this correct? should we include eps_u?
 
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     # calculate reward for Y0s
     eps_Y = jnp.clip(
         (Y0s[None] * jnp.sqrt(alphas_bar[t]) - Yts[:, None]) / sigmas[t], -2.0, 2.0
     )  # (Nexp, Nsample, Hsample, Nu)
-    logpdss_Yt = -0.5 * jnp.mean(eps_Y**2, axis=-1)  # (Nexp, Nsample, Hsample)
-    logpdss = logpdss_Yt - logpdss_Y0
-    logpds = logpdss.mean(axis=-1)  # (Nexp, Nsample)
+    logpds_Yt = -0.5 * jnp.mean(eps_Y**2, axis=(2, 3))  # (Nexp, Nsample)
+    logpds = logpds_Yt - logpds_Y0  # (Nexp, Nsample)
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
 
     rews_normed = (rews - rews.mean()) / rews.std()
     logs_Y0_bar = (rews_normed + logpds) / temp_sample
-    scale_log = (1.0 - t / (Ndiffuse - 1)) * 0.0 + 1.0 # NOTE: schedule for temperature
-    logs_Y0_hat_new = rews_normed / temp_sample * scale_log
+    logs_Y0_hat_new = rews_normed / temp_sample - logpds_Y0 # Question: here we use logpds_Y0 instead of logpds?
     Y0s_bar = jnp.einsum(
         "mn,nij->mij", jax.nn.softmax(logs_Y0_bar, axis=-1), Y0s
     )  # (Nexp, Hsample, Nu)
@@ -165,7 +163,7 @@ def reverse_once(carry, unused):
 
     rng, idx_rng = jax.random.split(rng)
     std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    need_resample = std_w_rew > 0.0e-2 # NOTE: enable resampling
+    need_resample = std_w_rew > 2.0e-2 # NOTE: enable resampling
     idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
     Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
     logs_Y0_hat_new_resample = jnp.zeros(Nsample)

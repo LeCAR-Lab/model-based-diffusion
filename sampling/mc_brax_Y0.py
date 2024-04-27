@@ -165,7 +165,15 @@ def reverse_once(carry, unused):
     weights = jax.nn.softmax(logweight / temp_sample)
     weights_rew = jax.nn.softmax(rews_normed / temp_sample)
     Y0_bar = jnp.einsum("n,nij->ij", weights, Y0s)
-    Y0_hat_new = jnp.einsum("n,nij->ij", weights_rew, Y0s) # NOTE: update only with reward
+    Y0_hat_bar = jnp.einsum("n,nij->ij", weights_rew, Y0s) # NOTE: update only with reward
+    k = sigmas[t-1]**2 / sigmas[t]**2
+    rng, Y0_hat_rng = jax.random.split(rng)
+    Y0_hat_new = k * Y0_hat + (1 - k) * Y0_hat_bar + jnp.sqrt(sigmas[t]**2 - sigmas[t-1]**2) * jax.random.normal(Y0_hat_rng, (Hsample, Nu))
+    Y0_hat_last = Y0_hat_bar
+    Y0_hat_new = jnp.where(t == 0, Y0_hat_last, Y0_hat_new)
+    jax.debug.print("k={x}", x=k)
+    jax.debug.print("sigma delta{x}", x=jnp.sqrt(sigmas[t]**2 - sigmas[t-1]**2))
+    jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
 
     # Method2: sample around Yt P(Yt)
     # rng, Y0s_rng = jax.random.split(rng)
