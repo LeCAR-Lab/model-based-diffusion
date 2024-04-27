@@ -15,7 +15,7 @@ class PushT(PipelineEnv):
     def __init__(self, backend: str = "generalized"):
         sys = mjcf.load("pushT.xml")
 
-        super().__init__(sys, backend=backend, n_frames=10)
+        super().__init__(sys, backend=backend, n_frames=5)
 
     def reset(self, rng: jnp.ndarray) -> State:
         rng, rng_goal_xy = jax.random.split(rng)
@@ -26,6 +26,8 @@ class PushT(PipelineEnv):
             jax.random.uniform(rng_goal_xy, (3,), minval=-1.0, maxval=1.0)
             * jnp.array([0.5, 0.5, jnp.pi])
         )
+        q = q.at[5:].set(jnp.array([-0.4, 0.0, 0.0]))
+        q = q.at[:2].set(jnp.array([-0.2, 0.0]))
         qd = jnp.zeros(self.sys.qd_size())
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)
@@ -49,9 +51,11 @@ class PushT(PipelineEnv):
     def _get_reward(self, pipeline_state: pipeline.State) -> jnp.ndarray:
         r_goal = pipeline_state.q[5:7]
         r_slider = pipeline_state.q[2:4]
+        r_pusher = pipeline_state.q[0:2]
         theta_goal = pipeline_state.q[7]
         theta_slider = pipeline_state.q[4]
-        return 1.0 - (jnp.linalg.norm(r_goal - r_slider)*1.5 + (jnp.abs(theta_goal - theta_slider) / (2.0*jnp.pi))*1.5)
+        d_pusher2slider = jnp.maximum(jnp.linalg.norm(r_pusher - r_slider)-0.2, 0.0) 
+        return 1.0 - (jnp.linalg.norm(r_goal - r_slider) + (jnp.abs(theta_goal - theta_slider) / jnp.pi) + d_pusher2slider)
 
     def _get_done(self, pipeline_state: pipeline.State) -> jnp.ndarray:
         done = (self._get_reward(pipeline_state) > 0.95)

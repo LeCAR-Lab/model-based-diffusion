@@ -13,11 +13,12 @@ from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
 
-config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+# config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
+
 
 ## setup env
 
-env_name = "halfcheetah"
+env_name = "pushT"
 backend = "positional"
 if env_name == "pushT":
     from pushT import PushT
@@ -64,7 +65,7 @@ elif env_name in ['humanoid', 'humanoidstandup']:
     Heval = 100
     substeps = 2
 elif env_name in ["pushT"]:
-    Heval = 100
+    Heval = 50
     substeps = 1
 else:
     Heval = 50
