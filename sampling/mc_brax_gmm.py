@@ -58,7 +58,7 @@ else:
     step_env = step_env_jit
 
 reset_env = jax.jit(env.reset)
-rng = jax.random.PRNGKey(seed=0)
+rng = jax.random.PRNGKey(seed=1)
 rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
 state_init = reset_env(rng_reset)
 path = f"../figure/{env_name}/{backend}"
@@ -159,9 +159,10 @@ def reverse_once(carry, unused):
     # sample Y0s
     rng, rng_Y0s = jax.random.split(rng)
     rng_Y0s = jax.random.split(rng_Y0s, (Hsample, Nu))
-    sigma_Y0 = sigmas[t] / jnp.sqrt(Nsample)
+    sigma_Y0 = sigmas[t]
     Y0s = sample_GMM_vvmap(mean_Y0s, logq_Y0s, rng_Y0s, sigma_Y0, Nsample) # (Hsample, Nu, Nsample)
     Y0s = jnp.moveaxis(Y0s, 2, 0) # (Nsample, Hsample, Nu)
+    Y0s = jnp.clip(Y0s, -1.0, 1.0)
     logq_Y0s = get_logp_GMM_vvvmap(mean_Y0s, logq_Y0s, Y0s, sigma_Y0).mean(axis=[1,2]) # (Nsample)
 
     # calculate logp_Y0s_new

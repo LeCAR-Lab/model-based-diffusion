@@ -11,10 +11,10 @@ Y0s_tar = jnp.array([-0.5, 0.5])
 log_weights_tar = jnp.array([0.0, 0.0])
 sigma_tar = 0.2
 
-Nsample = 16
+Nsample = 128
 Y0s_hat = random.normal(rng, (Nsample,))
 log_weights_hat = 1 / Nsample * jnp.ones(Nsample)
-sigma = sigma_tar*jnp.sqrt(Ntar / Nsample) * 3.0
+sigma = sigma_tar*jnp.sqrt(Ntar / Nsample) 
 
 def sample_GMM(means, log_weights, sigma, num_samples, key):
     components = random.categorical(key, log_weights, shape=(num_samples,))
