@@ -1,19 +1,12 @@
 from matplotlib import pyplot as plt
 import numpy as np
 
+alpha = 0.9
 
-def cosine_schedule(num_timesteps, s=0.008):
-    def f(t):
-        return np.cos((t / num_timesteps + s) / (1 + s) * 0.5 * np.pi) ** 2
+def f(t):
+    return 1/np.sqrt(alpha) - 0.5 * (1-alpha) / np.sqrt(1-alpha**t)
 
-    x = np.linspace(0, num_timesteps, num_timesteps + 1)
-    alphas_cumprod = f(x) / f(np.array([0]))
-    betas = 1 - alphas_cumprod[1:] / alphas_cumprod[:-1]
-    betas = np.clip(betas, 0.0001, 0.999)
-    return betas
+t = np.arange(0, 100, 1)
 
-
-betas = cosine_schedule(100)
-
-plt.plot(betas)
+plt.plot(t, f(t))
 plt.show()
