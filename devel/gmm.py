@@ -11,10 +11,10 @@ Y0s_tar = jnp.array([-0.5, 0.5])
 log_weights_tar = jnp.array([0.0, 0.0])
 sigma_tar = 0.2
 
-Nsample = 128
+Nsample = 16
 Y0s_hat = random.normal(rng, (Nsample,))
 log_weights_hat = 1 / Nsample * jnp.ones(Nsample)
-sigma = sigma_tar*jnp.sqrt(Ntar / Nsample)
+sigma = sigma_tar*jnp.sqrt(Ntar / Nsample) * 3.0
 
 def sample_GMM(means, log_weights, sigma, num_samples, key):
     components = random.categorical(key, log_weights, shape=(num_samples,))
@@ -48,7 +48,7 @@ def plot_gaussian_mixture(Y0s_hat, logp_Y0s_hat, sigma):
     mixture_density = mixture_density * scale
 
     # Target distribution: Gaussian mixture with two components
-    target_density = 0.5 * norm.pdf(x_values, -0.5, 0.2) + 0.5 * norm.pdf(x_values, 0.5, 0.2)
+    target_density = 0.5 * norm.pdf(x_values, -0.5, sigma_tar) + 0.5 * norm.pdf(x_values, 0.5, sigma_tar)
 
     plt.cla()
 
@@ -67,9 +67,10 @@ def plot_gaussian_mixture(Y0s_hat, logp_Y0s_hat, sigma):
     plt.grid(True)
     plt.xlim(-1.5, 1.5)
     plt.ylim(0, 2.0)
+    plt.pause(0.3)
 
 for i in range(10):
     rng, key = random.split(rng)
     Y0s_hat, logp_Y0s_hat = update_once(Y0s_hat, log_weights_hat, key)
     plot_gaussian_mixture(Y0s_hat, logp_Y0s_hat, sigma)
-    plt.savefig(f"../figure/{i}.png")
+    # plt.savefig(f"../figure/{i}.png")
