@@ -21,8 +21,8 @@ init_data = False
 
 ## setup env
 
-env_name = "halfcheetah"
-backend = "positional"
+env_name = "humanoidstandup"
+backend = "generalized"
 if env_name in ["hopper", "walker2d"]:
     substeps = 10
 elif env_name in ["humanoid", "humanoidstandup"]:
@@ -64,10 +64,10 @@ if not os.path.exists(path):
 ## run diffusion
 
 Nexp = 1
-Nsample = 1024
+Nsample = 2048
 Hsample = 50
-Ndiffuse = 100
-temp_sample = 0.5
+Ndiffuse = 300
+temp_sample = 0.1
 beta0 = 1e-4
 betaT = 1e-2
 betas = jnp.linspace(beta0, betaT, Ndiffuse)
@@ -121,7 +121,7 @@ def reverse_once(carry, unused):
 
     # esitimate mu_0tm1
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-    jax.debug.print("rews={x:.2f} \pm {y:.2f}", x=rews.mean(), y=rews.std())
+    jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
     logp0 = (rews - rews.mean()) / rews.std() / temp_sample
     weights = jax.nn.softmax(logp0)
     mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
