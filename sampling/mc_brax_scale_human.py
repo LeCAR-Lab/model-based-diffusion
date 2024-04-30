@@ -11,6 +11,7 @@ from jax import lax
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
+import pickle
 
 # config.update("jax_enable_x64", True) # NOTE: this is important for simulating long horizon open loop control
 
@@ -38,14 +39,10 @@ elif env_name == "humanoidtrack":
 
     env = HumanoidTrack()
     terminal_cost_scale = 10.0
-    # t_key = jnp.array([0, 10, 20, 30, 40, 50])
-    # xl_key = jnp.array([0.0, 0.0, 1.0, 1.0, 3.0, 3.0])*0.7
-    # xr_key = jnp.array([0.0, 0.0, 0.5, 2.0, 2.0, 4.0])*0.7
-    # left_shin_demo = jnp.interp(jnp.arange(51), t_key, xl_key)
-    # right_shin_demo = jnp.interp(jnp.arange(51), t_key, xr_key)
-    t_key = jnp.array([0, 50])
-    xt_key = jnp.array([0.0, 3.0])
-    torso_demo = jnp.interp(jnp.arange(51), t_key, xt_key)
+    
+    # load demostration from ../devel/xs_ref_dict.pkl
+    with open("../devel/xs_ref_dict.pkl", "rb") as f:
+        xs_demo_dict = pickle.load(f)
 
     # plt.plot(left_shin_demo, label="left shin demo")
     # plt.plot(right_shin_demo, label="right shin demo")
@@ -55,18 +52,14 @@ elif env_name == "humanoidtrack":
         def step(state, data):
             u, t = data
             state = step_env(state, u)
-            x_torso = state.pipeline_state.x.pos[env.torso_idx, 0]
-            value = -((x_torso - torso_demo[t]) ** 2)
-            # x_left_shin = state.pipeline_state.x.pos[env.left_shin_idx, 0]
-            # x_right_shin = state.pipeline_state.x.pos[env.right_shin_idx, 0]
-            # value = (
-            #     -((x_left_shin - left_shin_demo[t]) ** 2)
-            #     - (x_right_shin - right_shin_demo[t]) ** 2
-            # )
+            value = 0.0
+            for name, idx in env.track_body_idx.items():
+                x = state.pipeline_state.x.pos[idx]
+                value -= (x - xs_demo_dict[name][t+20]) ** 2
             return state, value
 
         _, value_xs = jax.lax.scan(step, state, (us, jnp.arange(us.shape[0]) + 1))
-        return value_xs.sum()
+        return value_xs.mean()
 
 else:
     env = envs.get_environment(env_name=env_name, backend=backend)
@@ -99,8 +92,8 @@ if not os.path.exists(path):
 ## run diffusion
 
 Nexp = 1
-Nsample = 8192
-Hsample = 50
+Nsample = 8192 
+Hsample = 100
 Ndiffuse = 200
 temp_sample = 0.1
 beta0 = 1e-4
@@ -129,14 +122,24 @@ def eval_us(state, us):
     rews = rews.at[-1].set(rews[-1] * terminal_cost_scale)
     return rews
 
+def set_ref_body_pos(env, pipeline_state, xs_demo_dict, t):
+    for i, (name, idx) in enumerate(env.ref_body_idx.items()):
+        pipeline_state = pipeline_state.replace(
+            x=pipeline_state.x.replace(
+                pos=pipeline_state.x.pos.at[idx].set(xs_demo_dict[name[:-4]][t])
+            )
+        )
+    return pipeline_state
 
 def render_us(state, us):
     rollout = []
     rew_sum = 0.0
-    for i in range(Hsample):
+    for t in range(Hsample):
         for j in range(substeps):
-            rollout.append(state.pipeline_state)
-            state = step_env_jit(state, us[i])
+            pipeline_state = state.pipeline_state
+            pipeline_state = set_ref_body_pos(env, pipeline_state, xs_demo_dict, t)
+            rollout.append(pipeline_state)
+            state = step_env_jit(state, us[t])
             rew_sum += state.reward
     rew_mean = rew_sum / (Hsample * substeps)
     webpage = html.render(env.sys.replace(dt=env.dt), rollout)
@@ -156,22 +159,27 @@ def reverse_once(carry, unused):
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
 
     # esitimate mu_0tm1
-    rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-    jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
-    logp0 = (rews - rews.mean()) / rews.std() / temp_sample
-    weights = jax.nn.softmax(logp0)
-    mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
+    # rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
+    # jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
+    # logp0 = (rews - rews.mean()) / rews.std() / temp_sample
+    # weights = jax.nn.softmax(logp0)
+    # mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
 
     # esitimate mu_0tm1
     # rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-    # logpJ = rews / temp_sample
-    # value_xs = jax.vmap(eval_xs, in_axes=(None, 0))(state_init, Y0s)
-    # logpdemo = value_xs - jnp.mean(value_xs) + logpJ
+    # rews_normed = (rews - rews.mean()) / rews.std()
+    value_xs = jax.vmap(eval_xs, in_axes=(None, 0))(state_init, Y0s)
+    rews = jnp.zeros(Nsample)
+    rews_normed = jnp.zeros(Nsample)
+    logpJ = rews_normed / temp_sample
+    logpdemo = ((value_xs - jnp.mean(value_xs))/jnp.std(value_xs) + rews_normed) / temp_sample
     # jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
-    # jax.debug.print("logpdemo={x} \pm {y}", x=logpdemo.mean(), y=logpdemo.std())
+    jax.debug.print("value_xs={x} \pm {y}", x=value_xs.mean(), y=value_xs.std())
     # logp0 = jnp.concat([logpJ, logpdemo], axis=0)
     # weights = jax.nn.softmax(logp0)
     # mu_0tm1 = jnp.einsum("n,nij->ij", weights, jnp.concatenate([Y0s, Y0s], axis=0))
+    weights = jax.nn.softmax(logpdemo)
+    mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)
 
     return (t - 1, rng, mu_0tm1), rews.mean()
 
