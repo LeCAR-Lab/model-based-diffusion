@@ -41,7 +41,7 @@ elif env_name == "humanoidtrack":
     terminal_cost_scale = 10.0
     
     # load demostration from ../devel/xs_ref_dict.pkl
-    with open("../devel/xs_ref_dict.pkl", "rb") as f:
+    with open("../devel/run_ref_dict.pkl", "rb") as f:
         xs_demo_dict = pickle.load(f)
 
     # plt.plot(left_shin_demo, label="left shin demo")
@@ -55,7 +55,7 @@ elif env_name == "humanoidtrack":
             value = 0.0
             for name, idx in env.track_body_idx.items():
                 x = state.pipeline_state.x.pos[idx]
-                value -= (x - xs_demo_dict[name][t+20]) ** 2
+                value -= (x - xs_demo_dict[name][t]) ** 2
             return state, value
 
         _, value_xs = jax.lax.scan(step, state, (us, jnp.arange(us.shape[0]) + 1))
@@ -93,7 +93,7 @@ if not os.path.exists(path):
 
 Nexp = 1
 Nsample = 8192 
-Hsample = 100
+Hsample = 50
 Ndiffuse = 200
 temp_sample = 0.1
 beta0 = 1e-4

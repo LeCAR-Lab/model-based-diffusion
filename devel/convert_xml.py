@@ -3,7 +3,10 @@ import xml.etree.ElementTree as ET
 
 # XML content string (simplified for this example)
 # load walk_ref.xml file
-with open('walk_ref.xml', 'r') as file:
+task = "walk" # run
+filename = f"{task}_ref.xml"
+
+with open(filename, 'r') as file:
     xml_content = file.read()
 
 # Parse the XML using ElementTree
@@ -24,4 +27,6 @@ for key_element in root.findall('.//key'):
 mpos_array = np.stack(all_mpos)
 
 # Save the numpy array to a .npy file
-np.save('walk_ref.npy', mpos_array)
+np.save('run_ref.npy', mpos_array)
+
+print(mpos_array.shape)

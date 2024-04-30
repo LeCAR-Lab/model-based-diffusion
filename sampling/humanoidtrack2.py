@@ -36,11 +36,11 @@ class HumanoidTrack(PipelineEnv):
             "rshoulder",
             "lhip",
             "rhip",
-            'torso', 
-            'left_thigh',
-            'right_thigh', 
-            'left_shin',
-            'right_shin',
+            "torso",
+            "left_thigh",
+            "right_thigh",
+            "left_shin",
+            "right_shin",
         ]
         self.ref_body_names = [name + "_ref" for name in body_names]
         self.ref_body_idx = {
@@ -85,6 +85,7 @@ class HumanoidTrack(PipelineEnv):
             - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1
         )
 
+
 def set_ref_body_pos(env, pipeline_state, xs_ref_dict, t):
     for i, (name, idx) in enumerate(env.ref_body_idx.items()):
         pipeline_state = pipeline_state.replace(
@@ -98,23 +99,50 @@ def set_ref_body_pos(env, pipeline_state, xs_ref_dict, t):
 def main():
     env = HumanoidTrack()
 
-    xs_ref = jnp.load("../devel/walk_ref.npy")[50:]
-    X = jnp.array([
-        [0, -1, 0],
-        [1, 0, 0],
-        [0, 0, 1]
-    ])
+    task = "run"
+    xs_ref = jnp.load(f"../devel/{task}_ref.npy")
+    if task == "walk":
+        X = jnp.array([[0, -1, 0], [1, 0, 0], [0, 0, 1]])
+    elif task == "run":
+        X = jnp.array([[-1, 0, 0], [0, -1, 0], [0, 0, 1]])
+    else:
+        raise ValueError(f"task {task} not recognized")
     xs_ref = jnp.einsum("ij,kpj->kpi", X, xs_ref)
+    # modify xs_ref
+    if task == "walk":
+        xs_ref = xs_ref[50:]  # remove first 50 frames
+    elif task == "run":
+        xs_ref = jnp.concatenate(
+            [xs_ref[:1]] * 8 + [xs_ref[1:]], axis=0
+        )  # repeat first frame 8 times
+        # scale to 0.75
+        ts = jnp.arange(xs_ref.shape[0]) 
+        ts_scaled = ts * 0.75
+        xs_ref = jax.vmap(
+            jax.vmap(jnp.interp, in_axes=(None, None, 1)), in_axes=(None, None, 1)
+        )(ts_scaled, ts, xs_ref)
+        xs_ref = jnp.moveaxis(xs_ref, 2, 0)
+        print(xs_ref.shape)
     xs_ref_dict = {name: xs_ref[:, i] for i, name in enumerate(env.ref_body_names)}
-    xs_ref_dict["torso_ref"] = 0.5 * (xs_ref_dict["head_ref"] + xs_ref_dict["pelvis_ref"])
-    xs_ref_dict["left_thigh_ref"] = 0.5 * (xs_ref_dict["lhip_ref"] + xs_ref_dict["lknee_ref"])
-    xs_ref_dict["right_thigh_ref"] = 0.5 * (xs_ref_dict["rhip_ref"] + xs_ref_dict["rknee_ref"])
-    xs_ref_dict["left_shin_ref"] = 0.5 * (xs_ref_dict["lknee_ref"] + xs_ref_dict["ltoe_ref"])
-    xs_ref_dict["right_shin_ref"] = 0.5 * (xs_ref_dict["rknee_ref"] + xs_ref_dict["rtoe_ref"])
-    xs_ref_dict_rm_ref = {name[:-4]: xs_ref_dict[name] for name in xs_ref_dict}
+    xs_ref_dict["torso_ref"] = 0.5 * (
+        xs_ref_dict["head_ref"] + xs_ref_dict["pelvis_ref"]
+    )
+    xs_ref_dict["left_thigh_ref"] = 0.5 * (
+        xs_ref_dict["lhip_ref"] + xs_ref_dict["lknee_ref"]
+    )
+    xs_ref_dict["right_thigh_ref"] = 0.5 * (
+        xs_ref_dict["rhip_ref"] + xs_ref_dict["rknee_ref"]
+    )
+    xs_ref_dict["left_shin_ref"] = 0.5 * (
+        xs_ref_dict["lknee_ref"] + xs_ref_dict["ltoe_ref"]
+    )
+    xs_ref_dict["right_shin_ref"] = 0.5 * (
+        xs_ref_dict["rknee_ref"] + xs_ref_dict["rtoe_ref"]
+    )
 
-    # save xs_ref_dict 
-    with open("../devel/xs_ref_dict.pkl", "wb") as f:
+    xs_ref_dict_rm_ref = {name[:-4]: xs_ref_dict[name] for name in xs_ref_dict}
+    # save xs_ref_dict
+    with open(f"../devel/{task}_ref_dict.pkl", "wb") as f:
         pickle.dump(xs_ref_dict_rm_ref, f)
 
     rng = jax.random.PRNGKey(1)
@@ -122,7 +150,7 @@ def main():
     env_reset = jax.jit(env.reset)
     state = env_reset(rng)
     rollout = [state.pipeline_state]
-    for t in range(100):
+    for t in range(200):
         rng, rng_act = jax.random.split(rng)
         act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
         state = env_step(state, act)
