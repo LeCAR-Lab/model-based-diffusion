@@ -15,6 +15,9 @@ class HumanoidTrack(PipelineEnv):
         sys = mjcf.load(path)
         n_frames = 5
         kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
+        self.torso_idx = sys.link_names.index("torso")
+        self.left_shin_idx = sys.link_names.index("left_shin")
+        self.right_shin_idx = sys.link_names.index("right_shin")
 
         super().__init__(sys=sys, backend=backend, **kwargs)
 
@@ -50,7 +53,7 @@ class HumanoidTrack(PipelineEnv):
     def _get_reward(self, pipeline_state: base.State) -> jax.Array:
         return (
             pipeline_state.x.pos[0, 0]
-            - jnp.abs(pipeline_state.x.pos[0, 2] - 1.25)
+            - jnp.clip(jnp.abs(pipeline_state.x.pos[0, 2] - 1.25), -1.0, 1.0)
             - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1
         )
 
@@ -62,7 +65,7 @@ def main():
     env_reset = jax.jit(env.reset)
     state = env_reset(rng)
     rollout = [state.pipeline_state]
-    for _ in range(50):
+    for _ in range(1):
         rng, rng_act = jax.random.split(rng)
         act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
         state = env_step(state, act)
