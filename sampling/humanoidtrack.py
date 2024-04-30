@@ -13,38 +13,7 @@ class HumanoidTrack(PipelineEnv):
     def __init__(self, backend="positional", **kwargs):
         path = "humanoidtrack.xml"
         sys = mjcf.load(path)
-
         n_frames = 5
-
-        if backend in ["spring", "positional"]:
-            sys = sys.replace(dt=0.006)
-            n_frames = 5
-            sys = sys.replace(
-                actuator=sys.actuator.replace(
-                    gear=jnp.array(
-                        [
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            350.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                            100.0,
-                        ]
-                    )
-                )
-            )  # pyformat: disable
-
         kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
 
         super().__init__(sys=sys, backend=backend, **kwargs)
@@ -79,7 +48,11 @@ class HumanoidTrack(PipelineEnv):
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd], axis=-1)
 
     def _get_reward(self, pipeline_state: base.State) -> jax.Array:
-        return pipeline_state.x.pos[0, 0] - jnp.abs(pipeline_state.x.pos[0, 2] - 1.2)
+        return (
+            pipeline_state.x.pos[0, 0]
+            - jnp.abs(pipeline_state.x.pos[0, 2] - 1.25)
+            - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1
+        )
 
 
 def main():

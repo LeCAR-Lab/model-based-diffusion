@@ -6,7 +6,7 @@
         <motor ctrllimited="true" ctrlrange="-.4 .4"/>
     </default>
     <!-- Removed RK4 integrator for brax. -->
-    <option iterations="8" timestep="0.003"/>
+    <option iterations="8" timestep="0.006"/>
     <custom>
         <!-- brax custom params -->
         <numeric data="2500" name="constraint_limit_stiffness"/>
@@ -103,22 +103,22 @@
     </worldbody>
 
     <actuator>
-        <motor gear="100" joint="abdomen_y" name="abdomen_y"/>
-        <motor gear="100" joint="abdomen_z" name="abdomen_z"/>
-        <motor gear="100" joint="abdomen_x" name="abdomen_x"/>
-        <motor gear="100" joint="right_hip_x" name="right_hip_x"/>
-        <motor gear="100" joint="right_hip_z" name="right_hip_z"/>
-        <motor gear="300" joint="right_hip_y" name="right_hip_y"/>
-        <motor gear="200" joint="right_knee" name="right_knee"/>
-        <motor gear="100" joint="left_hip_x" name="left_hip_x"/>
-        <motor gear="100" joint="left_hip_z" name="left_hip_z"/>
-        <motor gear="300" joint="left_hip_y" name="left_hip_y"/>
-        <motor gear="200" joint="left_knee" name="left_knee"/>
-        <motor gear="25" joint="right_shoulder1" name="right_shoulder1"/>
-        <motor gear="25" joint="right_shoulder2" name="right_shoulder2"/>
-        <motor gear="25" joint="right_elbow" name="right_elbow"/>
-        <motor gear="25" joint="left_shoulder1" name="left_shoulder1"/>
-        <motor gear="25" joint="left_shoulder2" name="left_shoulder2"/>
-        <motor gear="25" joint="left_elbow" name="left_elbow"/>
+        <motor gear="350" joint="abdomen_y" name="abdomen_y"/>
+        <motor gear="350" joint="abdomen_z" name="abdomen_z"/>
+        <motor gear="350" joint="abdomen_x" name="abdomen_x"/>
+        <motor gear="350" joint="right_hip_x" name="right_hip_x"/>
+        <motor gear="350" joint="right_hip_z" name="right_hip_z"/>
+        <motor gear="350" joint="right_hip_y" name="right_hip_y"/>
+        <motor gear="350" joint="right_knee" name="right_knee"/>
+        <motor gear="350" joint="left_hip_x" name="left_hip_x"/>
+        <motor gear="350" joint="left_hip_z" name="left_hip_z"/>
+        <motor gear="350" joint="left_hip_y" name="left_hip_y"/>
+        <motor gear="350" joint="left_knee" name="left_knee"/>
+        <motor gear="100" joint="right_shoulder1" name="right_shoulder1"/>
+        <motor gear="100" joint="right_shoulder2" name="right_shoulder2"/>
+        <motor gear="100" joint="right_elbow" name="right_elbow"/>
+        <motor gear="100" joint="left_shoulder1" name="left_shoulder1"/>
+        <motor gear="100" joint="left_shoulder2" name="left_shoulder2"/>
+        <motor gear="100" joint="left_elbow" name="left_elbow"/>
     </actuator>
 </mujoco>

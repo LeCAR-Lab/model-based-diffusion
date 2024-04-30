@@ -36,6 +36,7 @@ if env_name == "pushT":
 elif env_name == "humanoidtrack":
     from humanoidtrack import HumanoidTrack
     env = HumanoidTrack()
+    terminal_cost_scale = 10.0
 else:
     env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
@@ -67,7 +68,7 @@ if not os.path.exists(path):
 ## run diffusion
 
 Nexp = 1
-Nsample = 2048
+Nsample = 8192
 Hsample = 50
 Ndiffuse = 100
 temp_sample = 0.1
@@ -94,6 +95,7 @@ def eval_us(state, us):
         return state, state.reward
 
     _, rews = jax.lax.scan(step, state, us)
+    rews = rews.at[-1].set(rews[-1]*terminal_cost_scale)
     return rews
 
 
