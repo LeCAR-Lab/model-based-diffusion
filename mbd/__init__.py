@@ -10,5 +10,7 @@ def get_env(env_name: str):
         return brax_envs.get_environment(env_name=env_name, backend="positional")
     elif env_name == "hopper":
         return envs.Hopper()
+    elif env_name == "humanoidstandup":
+        return envs.HumanoidStandup()
     else:
         raise ValueError(f"Unknown environment: {env_name}")
