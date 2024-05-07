@@ -10,7 +10,7 @@ from jax.tree_util import tree_map
 
 import mbd
 
-env_name = "ant"
+env_name = "humanoidstandup"
 env = mbd.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
@@ -95,10 +95,8 @@ rng, rng_reset = jax.random.split(rng)
 state_init = env.reset(rng_reset)
 rollouts = []
 for i in range(mu_0ts.shape[0]):
-    rng, rng_noise = jax.random.split(rng)
-    noise = jax.random.normal(rng_noise, shape=(Hsample, env.action_size)) * (i/mu_0ts.shape[0]) * 0.67
     rollout = render_us(state_init, mu_0ts[i])
-    rollouts.append(rollout[::1])
+    rollouts.append([*rollout[::10], rollout[-1]])
 json_file = dumps(env.sys.replace(dt=env.dt), rollouts)
 html_file = render_from_json(json_file, height=500, colab=False, base_url=None)
 with open(f"{path}/render_diffusion.html", "w") as f:
