@@ -47,6 +47,7 @@ rng = jax.random.PRNGKey(seed=args.seed)
 temp_dict = {
     "ant": 0.1,
     "halfcheetah": 0.4, 
+    "hopper": 0.1,
 }
 env = mbd.get_env(args.env_name)
 Nx = env.observation_size
