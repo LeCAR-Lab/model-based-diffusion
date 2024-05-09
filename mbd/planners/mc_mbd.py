@@ -53,6 +53,7 @@ def run_diffusion(args: Args):
         "humanoidstandup": 0.1,
         "humanoidrun": 0.1,
         "walker2d": 0.1,
+        "pushT": 0.2, 
     }
     Ndiffuse_recommend = {
         # "humanoidstandup": 300,
