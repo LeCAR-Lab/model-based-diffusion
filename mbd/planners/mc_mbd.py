@@ -54,8 +54,18 @@ def run_diffusion(args: Args):
         "humanoidrun": 0.1,
         "walker2d": 0.1,
     }
+    Ndiffuse_recommend = {
+        "humanoidstandup": 300,
+        "humanoidrun": 300,
+    }
+    Nsample_recommend = {
+        "humanoidstandup": 8192,
+        "humanoidrun": 8192,
+    }
     if not args.disable_recommended_params:
         args.temp_sample = temp_recommend.get(args.env_name, args.temp_sample)
+        args.Ndiffuse = Ndiffuse_recommend.get(args.env_name, args.Ndiffuse)
+        args.Nsample = Nsample_recommend.get(args.env_name, args.Nsample)
         print(f"override temp_sample to {args.temp_sample}")
     env = mbd.envs.get_env(args.env_name)
     Nx = env.observation_size

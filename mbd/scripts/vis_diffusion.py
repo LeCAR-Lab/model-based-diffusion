@@ -10,7 +10,7 @@ from jax.tree_util import tree_map
 
 import mbd
 
-env_name = "humanoidstandup"
+env_name = "humanoidrun"
 env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
@@ -96,7 +96,8 @@ state_init = env.reset(rng_reset)
 rollouts = []
 for i in range(mu_0ts.shape[0]):
     rollout = render_us(state_init, mu_0ts[i])
-    rollouts.append([*rollout[::10], rollout[-1]])
+    # rollouts.append([*rollout[::5], rollout[-1]])
+    rollouts.append([*rollout[:40][::3]])
 json_file = dumps(env.sys.replace(dt=env.dt), rollouts)
 html_file = render_from_json(json_file, height=500, colab=False, base_url=None)
 with open(f"{path}/render_diffusion.html", "w") as f:
