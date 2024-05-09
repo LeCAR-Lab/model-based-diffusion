@@ -7,12 +7,13 @@ import jax
 from jax import numpy as jnp
 import mujoco
 
+import mbd
+
 
 class HumanoidTrack(PipelineEnv):
 
     def __init__(self, backend="positional", **kwargs):
-        path = "humanoidtrack.xml"
-        sys = mjcf.load(path)
+        sys = mjcf.load(f"{mbd.__path__[0]}/assets/humanoidtrack.xml")
         n_frames = 5
         kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
         self.torso_idx = sys.link_names.index("torso")

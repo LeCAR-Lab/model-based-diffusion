@@ -11,7 +11,7 @@ from jax.tree_util import tree_map
 import mbd
 
 env_name = "humanoidstandup"
-env = mbd.get_env(env_name)
+env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
 path = f"{mbd.__path__[0]}/../results/{env_name}"

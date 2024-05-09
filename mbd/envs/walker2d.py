@@ -8,9 +8,10 @@ import jax
 from jax import numpy as jp
 
 
-class Hopper(PipelineEnv):
+class Walker2d(PipelineEnv):
+
     def __init__(self):
-        path = epath.resource_path("brax") / "envs/assets/hopper.xml"
+        path = epath.resource_path("brax") / "envs/assets/walker2d.xml"
         sys = mjcf.load(path)
 
         self._reset_noise_scale = 5e-3
@@ -58,5 +59,5 @@ class Hopper(PipelineEnv):
         """Returns the environment reward."""
         return (
             pipeline_state.x.pos[0, 0]
-            - jp.clip(jp.abs(pipeline_state.x.pos[0, 2] - 1.0), -1.0, 1.0) * 0.5
+            - jp.clip(jp.abs(pipeline_state.x.pos[0, 2] - 1.1), -1.0, 1.0) * 0.5
         )
