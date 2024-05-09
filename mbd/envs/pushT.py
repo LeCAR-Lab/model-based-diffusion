@@ -26,10 +26,8 @@ class PushT(PipelineEnv):
         q = q.at[:2].set(jnp.array([0.1, -0.15]))
         q = q.at[5:].set(
             jax.random.uniform(rng_goal_xy, (3,), minval=-1.0, maxval=1.0)
-            * jnp.array([0.5, 0.5, jnp.pi])
+            * jnp.array([0.2, 0.2, jnp.pi/4]) + jnp.array([0.4, 0.4, jnp.pi])
         )
-        # q = q.at[5:].set(jnp.array([-0.4, 0.0, 0.0]))
-        # q = q.at[:2].set(jnp.array([-0.2, 0.0]))
         qd = jnp.zeros(self.sys.qd_size())
         pipeline_state = self.pipeline_init(q, qd)
         obs = self._get_obs(pipeline_state)
