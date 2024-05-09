@@ -70,7 +70,7 @@ train_fn = {
         num_timesteps=7_864_320,
         num_evals=20,
         reward_scaling=5,
-        episode_length=1000,
+        episode_length=100,
         normalize_observations=True,
         action_repeat=1,
         discounting=0.997,
@@ -122,9 +122,9 @@ train_fn = {
     "pushT": functools.partial(
         ppo.train,
         num_timesteps=10_000_000,
-        num_evals=100,
+        num_evals=1000,
         reward_scaling=5,
-        episode_length=50,
+        episode_length=100,
         normalize_observations=True,
         action_repeat=1,
         unroll_length=30,
@@ -139,10 +139,10 @@ train_fn = {
     ),
     "humanoidrun": functools.partial(
         ppo.train,
-        num_timesteps=50_000_000,
+        num_timesteps=100_000_000,
         num_evals=10,
         reward_scaling=0.1,
-        episode_length=1000,
+        episode_length=100,
         normalize_observations=True,
         action_repeat=1,
         unroll_length=10,
@@ -177,6 +177,7 @@ train_fn = {
 
 xdata, ydata = [], []
 times = [datetime.now()]
+
 
 def progress(num_steps, metrics):
     times.append(datetime.now())
