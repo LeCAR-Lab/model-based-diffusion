@@ -175,23 +175,8 @@ train_fn = {
     ),
 }[args.env_name]
 
-max_y = {
-    "ant": 8000,
-    "halfcheetah": 8000,
-    "hopper": 2500,
-    "humanoid": 13000,
-    "humanoidstandup": 75_000,
-    "reacher": 5,
-    "walker2d": 5000,
-    "pusher": 0,
-    "pushT": 100,
-}[args.env_name]
-min_y = {"reacher": -100, "pusher": -150, "pushT": -50}.get(args.env_name, 0)
-
-fig, ax = plt.subplots()
 xdata, ydata = [], []
 times = [datetime.now()]
-
 
 def progress(num_steps, metrics):
     times.append(datetime.now())
