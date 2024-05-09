@@ -10,7 +10,7 @@ from jax.tree_util import tree_map
 
 import mbd
 
-env_name = "humanoidrun"
+env_name = "pushT"
 env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
@@ -30,8 +30,8 @@ def dumps(sys, statess) -> str:
     for id_ in range(sys.ngeom):
         link_idx = sys.geom_bodyid[id_] - 1
         rgba = sys.geom_rgba[id_]
-        if (rgba == [0.5, 0.5, 0.5, 1.0]).all():
-            rgba = np.array([0.4, 0.33, 0.26, 1.0])
+        # if (rgba == [0.5, 0.5, 0.5, 1.0]).all():
+        #     rgba = np.array([0.4, 0.33, 0.26, 1.0])
 
         geom = {
             'name': _GEOM_TYPE_NAMES[sys.geom_type[id_]],
@@ -48,7 +48,8 @@ def dumps(sys, statess) -> str:
     # repeat link_geoms for each body across all timesteps
     all_link_geoms = {}
     all_link_names = []
-    for k in range(len(statess[0])):
+    traj_len = len(statess[0])
+    for k in range(traj_len):
         for i, (name, geoms) in enumerate(link_geoms.items()):
             name = f'{name}_{k}' if k > 0 else name
             geoms_new = []
@@ -58,7 +59,8 @@ def dumps(sys, statess) -> str:
                     geom_new['link_idx'] = -1
                 else:
                     geom_new['link_idx'] = geom['link_idx'] + k * (len(link_names)-1)
-                    geom_new['rgba'] = [*geom['rgba'][:3], k / len(statess[0])]
+                    a = k / traj_len * 0.8 + 0.2
+                    geom_new['rgba'] = [1, (1-a), (1-a), 1.0]
                 geoms_new.append(geom_new)
             all_link_geoms[name] = geoms_new
             all_link_names.append(name)
@@ -97,7 +99,9 @@ rollouts = []
 for i in range(mu_0ts.shape[0]):
     rollout = render_us(state_init, mu_0ts[i])
     # rollouts.append([*rollout[::5], rollout[-1]])
-    rollouts.append([*rollout[:40][::3]])
+    # rollouts.append([*rollout[::5]])
+    # rollouts.append([*rollout[:40][::3]])
+    rollouts.append([*rollout[:45]])
 json_file = dumps(env.sys.replace(dt=env.dt), rollouts)
 html_file = render_from_json(json_file, height=500, colab=False, base_url=None)
 with open(f"{path}/render_diffusion.html", "w") as f:

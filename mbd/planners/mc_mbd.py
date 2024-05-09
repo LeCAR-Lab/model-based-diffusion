@@ -55,11 +55,11 @@ def run_diffusion(args: Args):
         "walker2d": 0.1,
     }
     Ndiffuse_recommend = {
-        "humanoidstandup": 300,
+        # "humanoidstandup": 300,
         "humanoidrun": 300,
     }
     Nsample_recommend = {
-        "humanoidstandup": 8192,
+        # "humanoidstandup": 8192,
         "humanoidrun": 8192,
     }
     if not args.disable_recommended_params:
