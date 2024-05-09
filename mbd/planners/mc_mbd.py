@@ -92,7 +92,7 @@ def run_diffusion(args: Args):
     )
     sigmas_cond = jnp.sqrt(Sigmas_cond)
     sigmas_cond = sigmas_cond.at[0].set(0.0)
-    # print(f"init sigma = {sigmas[-1]:.2e}")
+    print(f"init sigma = {sigmas[-1]:.2e}")
 
     mu_0T = jnp.zeros([args.Hsample, Nu])
 

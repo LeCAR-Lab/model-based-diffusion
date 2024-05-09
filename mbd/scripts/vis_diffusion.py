@@ -101,7 +101,7 @@ for i in range(mu_0ts.shape[0]):
     # rollouts.append([*rollout[::5], rollout[-1]])
     # rollouts.append([*rollout[::5]])
     # rollouts.append([*rollout[:40][::3]])
-    rollouts.append([*rollout[:45]])
+    rollouts.append([*rollout[:40][::3]])
 json_file = dumps(env.sys.replace(dt=env.dt), rollouts)
 html_file = render_from_json(json_file, height=500, colab=False, base_url=None)
 with open(f"{path}/render_diffusion.html", "w") as f:
