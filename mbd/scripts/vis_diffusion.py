@@ -6,6 +6,8 @@ from brax.io.json import _to_dict, _GEOM_TYPE_NAMES
 import json
 import numpy as np
 from jax.tree_util import tree_map
+import pickle
+import os
 
 
 import mbd
@@ -14,6 +16,7 @@ env_name = "pushT"
 env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
+plot_interval = 5
 path = f"{mbd.__path__[0]}/../results/{env_name}"
 mu_0ts = jnp.load(f"{path}/mu_0ts.npy")
 
@@ -49,14 +52,18 @@ def dumps(sys, statess) -> str:
     all_link_geoms = {}
     all_link_names = []
     traj_len = len(statess[0])
+    plot_idx = jnp.arange(0, traj_len, plot_interval)
+    plot_idx = jnp.append(plot_idx, traj_len-1)
     for k in range(traj_len):
-        for i, (name, geoms) in enumerate(link_geoms.items()):
+        for _, (name, geoms) in enumerate(link_geoms.items()):
             name = f'{name}_{k}' if k > 0 else name
             geoms_new = []
             for geom in geoms:
                 geom_new = geom.copy()
                 if 'world' in name:
                     geom_new['link_idx'] = -1
+                elif "goal" in name:
+                    geom_new['rgba'] = [0.0, 1.0, 0.0, 1.0]
                 else:
                     geom_new['link_idx'] = geom['link_idx'] + k * (len(link_names)-1)
                     a = k / traj_len * 0.8 + 0.2
@@ -70,7 +77,10 @@ def dumps(sys, statess) -> str:
     # stack states for the viewer
     statess_list = []
     for states in statess:
-        states = jax.tree.map(lambda *x: jnp.concat(x), *states)
+        states_map = jax.tree.map(lambda *x: jnp.concat(x), *states)
+        statess_list.append(states_map)
+    for state in statess[-1]:
+        states = jax.tree.map(lambda x: jnp.concat([x]*traj_len), state)
         statess_list.append(states)
     statess = jax.tree.map(lambda *x: jnp.stack(x), *statess_list)
     statess = _to_dict(statess)
@@ -96,12 +106,20 @@ rng = jax.random.PRNGKey(0)
 rng, rng_reset = jax.random.split(rng)
 state_init = env.reset(rng_reset)
 rollouts = []
-for i in range(mu_0ts.shape[0]):
-    rollout = render_us(state_init, mu_0ts[i])
-    # rollouts.append([*rollout[::5], rollout[-1]])
-    # rollouts.append([*rollout[::5]])
-    # rollouts.append([*rollout[:40][::3]])
-    rollouts.append([*rollout[:40][::3]])
+if os.path.exists(f"{path}/rollouts.pkl"):
+    with open(f"{path}/rollouts.pkl", "rb") as f:
+        rollouts = pickle.load(f)
+    print("loaded rollouts")
+else:
+    for i in range(mu_0ts.shape[0]):
+        rollout = render_us(state_init, mu_0ts[i])
+        # rollouts.append([*rollout[::5], rollout[-1]])
+        # rollouts.append([*rollout[::5]])
+        # rollouts.append([*rollout[:40][::3]])
+        rollouts.append(rollout)
+    with open(f"{path}/rollouts.pkl", "wb") as f:
+        pickle.dump(rollouts, f)
+    print("saved rollouts")
 json_file = dumps(env.sys.replace(dt=env.dt), rollouts)
 html_file = render_from_json(json_file, height=500, colab=False, base_url=None)
 with open(f"{path}/render_diffusion.html", "w") as f:
