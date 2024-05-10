@@ -124,7 +124,7 @@ train_fn = {
         num_timesteps=10_000_000,
         num_evals=10,
         reward_scaling=1.0,
-        episode_length=50,
+        episode_length=100,
         normalize_observations=True,
         action_repeat=1,
         unroll_length=10,
@@ -135,7 +135,7 @@ train_fn = {
         entropy_cost=1e-2,
         num_envs=2048,
         batch_size=1024,
-        seed=0,
+        seed=1,
     ),
     "humanoidrun": functools.partial(
         ppo.train,
@@ -210,11 +210,12 @@ jit_env_step = jax.jit(env.step)
 jit_inference_fn = jax.jit(inference_fn)
 
 rew = []
+Nstep = 50
 for i in range(8):
     rng, rng_i = jax.random.split(rng)
     state = jit_env_reset(rng=rng_i)
     rews = []
-    for _ in range(50):
+    for _ in range(Nstep):
         act_rng, rng = jax.random.split(rng)
         act, _ = jit_inference_fn(state.obs, act_rng)
         state = jit_env_step(state, act)
@@ -225,7 +226,8 @@ print(f"mean reward: {rew.mean():.2f}, std: {rew.std():.2f}")
 
 rollout = []
 state = jit_env_reset(rng=rng_reset)
-for _ in range(50):
+
+for _ in range(Nstep):
     rollout.append(state.pipeline_state)
     act_rng, rng = jax.random.split(rng)
     act, _ = jit_inference_fn(state.obs, act_rng)
