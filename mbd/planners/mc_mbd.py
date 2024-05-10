@@ -56,7 +56,7 @@ def run_diffusion(args: Args):
         "pushT": 0.2, 
     }
     Ndiffuse_recommend = {
-        # "humanoidstandup": 300,
+        "pushT": 300,
         "humanoidrun": 300,
     }
     Nsample_recommend = {
