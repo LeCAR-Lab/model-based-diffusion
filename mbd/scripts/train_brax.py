@@ -121,21 +121,21 @@ train_fn = {
     ),
     "pushT": functools.partial(
         ppo.train,
-        num_timesteps=10_000_000,
+        num_timesteps=100_000_000,
         num_evals=10,
         reward_scaling=1.0,
         episode_length=100,
         normalize_observations=True,
         action_repeat=1,
-        unroll_length=10,
+        unroll_length=20,
         num_minibatches=16,
         num_updates_per_batch=8,
-        discounting=0.95,
+        discounting=0.99,
         learning_rate=3e-4,
         entropy_cost=1e-2,
         num_envs=2048,
         batch_size=1024,
-        seed=1,
+        seed=2,
     ),
     "humanoidrun": functools.partial(
         ppo.train,
@@ -210,7 +210,7 @@ jit_env_step = jax.jit(env.step)
 jit_inference_fn = jax.jit(inference_fn)
 
 rew = []
-Nstep = 50
+Nstep = 40 if args.env_name == "pushT" else 50
 for i in range(8):
     rng, rng_i = jax.random.split(rng)
     state = jit_env_reset(rng=rng_i)
