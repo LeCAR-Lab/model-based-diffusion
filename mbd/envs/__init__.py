@@ -17,7 +17,9 @@ def get_env(env_name: str):
         return HumanoidRun()
     elif env_name == "walker2d":
         return Walker2d()
-    elif env_name in ["ant", "halfcheetah"]: 
+    elif env_name in ["ant", "halfcheetah", "inverted_pendulum", "inverted_double_pendulum"]:
         return brax_envs.get_environment(env_name=env_name, backend="positional")
+    # elif env_name in []:
+    #     return brax_envs.get_environment(env_name=env_name, backend="generalized")
     else:
         raise ValueError(f"Unknown environment: {env_name}")
