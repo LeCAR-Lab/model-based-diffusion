@@ -27,7 +27,7 @@ class Args:
     # exp
     seed: int = 0
     disable_recommended_params: bool = False
-    render: bool = True
+    not_render: bool = False
     # env
     env_name: str = "ant" # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d"
     # diffusion
@@ -91,6 +91,14 @@ def run_diffusion(args: Args):
     alphas = 1.0 - betas
     alphas_bar = jnp.cumprod(alphas)
     sigmas = jnp.sqrt(1 - alphas_bar)
+
+    # linear sigma
+    # sigmas = jnp.linspace(0.01, 1.0, args.Ndiffuse) # DEBUG
+    # log sigma
+    # sigmas = jnp.exp(jnp.linspace(-4.0, 0.0, args.Ndiffuse)) # DEBUG
+    # exponential sigma
+    # sigmas = jnp.logspace(-4.0, 0.0, args.Ndiffuse)
+
     Sigmas_cond = (
         (1 - alphas) * (1 - jnp.sqrt(jnp.roll(alphas_bar, 1))) / (1 - alphas_bar)
     )
@@ -134,7 +142,7 @@ def run_diffusion(args: Args):
     rng_exp, rng = jax.random.split(rng)
     mu_0ts = reverse(mu_0T, rng_exp)
     mu_0ts = jnp.array(mu_0ts)
-    if args.render:
+    if not args.not_render:
         path = f"{mbd.__path__[0]}/../results/{args.env_name}"
         if not os.path.exists(path):
             os.makedirs(path)
@@ -149,4 +157,5 @@ def run_diffusion(args: Args):
 
 
 if __name__ == "__main__":
-    run_diffusion(args=tyro.cli(Args))
+    rew_final = run_diffusion(args=tyro.cli(Args))
+    print(f"final reward = {rew_final:.2e}")

@@ -5,6 +5,7 @@ from mbd.envs.hopper import Hopper
 from mbd.envs.humanoidstandup import HumanoidStandup
 from mbd.envs.humanoidrun import HumanoidRun
 from mbd.envs.walker2d import Walker2d
+from mbd.envs.cartpole import Cartpole
 
 def get_env(env_name: str):
     if env_name == "pushT":
@@ -17,9 +18,9 @@ def get_env(env_name: str):
         return HumanoidRun()
     elif env_name == "walker2d":
         return Walker2d()
-    elif env_name in ["ant", "halfcheetah", "inverted_pendulum", "inverted_double_pendulum"]:
+    elif env_name == "cartpole":
+        return Cartpole()
+    elif env_name in ["ant", "halfcheetah"]:
         return brax_envs.get_environment(env_name=env_name, backend="positional")
-    # elif env_name in []:
-    #     return brax_envs.get_environment(env_name=env_name, backend="generalized")
     else:
         raise ValueError(f"Unknown environment: {env_name}")
