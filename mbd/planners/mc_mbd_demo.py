@@ -122,18 +122,14 @@ def run_diffusion(args: Args):
 
         # evalulate demo
         if args.enable_demo:
-            rew_weighted = jnp.sum(rews * jax.nn.softmax(logp0))
-            demo_portion = env.rew_xref / (env.rew_xref + rew_weighted)
-            jax.debug.print("demo_portion={x}", x=demo_portion)
-            Ndemo = jnp.int32(args.Nsample * demo_portion)
-
             xref_logpds = jax.vmap(env.eval_xref_logpd)(qs)
-            top_idx = jnp.argsort(xref_logpds)[:Ndemo]
+            xref_logpds = xref_logpds - xref_logpds.max()
             logpdemo = (
                 (xref_logpds + env.rew_xref - rew_mean) / rew_std / args.temp_sample
             )
-
-            logp0 = logp0.at[top_idx].set(logpdemo)
+            demo_mask = logpdemo > logp0
+            logp0 = jnp.where(demo_mask, logpdemo, logp0)
+            logp0 = (logp0 - logp0.mean()) / logp0.std() / args.temp_sample
 
         weights = jax.nn.softmax(logp0)
         mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
