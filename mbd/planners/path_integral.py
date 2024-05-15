@@ -27,19 +27,18 @@ class Args:
     # exp
     seed: int = 0
     disable_recommended_params: bool = False
-    render: bool = True
     # env
-    env_name: str = "ant" # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d"
+    env_name: str = (
+        "ant"  # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d"
+    )
     # diffusion
     Nsample: int = 2048  # number of samples
     Hsample: int = 50  # horizon
-    Ndiffuse: int = 100  # number of diffusion steps
+    Nrefine: int = 100  # number of repeat steps
     temp_sample: float = 0.1  # temperature for sampling
-    beta0: float = 1e-4  # initial beta
-    betaT: float = 1e-2  # final beta
 
 
-def run_diffusion(args: Args):
+def run_path_integral(args: Args):
 
     rng = jax.random.PRNGKey(seed=args.seed)
 
@@ -53,9 +52,9 @@ def run_diffusion(args: Args):
         "humanoidstandup": 0.1,
         "humanoidrun": 0.1,
         "walker2d": 0.1,
-        "pushT": 0.2, 
+        "pushT": 0.2,
     }
-    Ndiffuse_recommend = {
+    Nrefine_recommend = {
         "pushT": 200,
         "humanoidrun": 300,
     }
@@ -67,7 +66,7 @@ def run_diffusion(args: Args):
     }
     if not args.disable_recommended_params:
         args.temp_sample = temp_recommend.get(args.env_name, args.temp_sample)
-        args.Ndiffuse = Ndiffuse_recommend.get(args.env_name, args.Ndiffuse)
+        args.Nrefine = Nrefine_recommend.get(args.env_name, args.Nrefine)
         args.Nsample = Nsample_recommend.get(args.env_name, args.Nsample)
         args.Hsample = Hsample_recommend.get(args.env_name, args.Hsample)
         print(f"override temp_sample to {args.temp_sample}")
@@ -85,29 +84,18 @@ def run_diffusion(args: Args):
     rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
     state_init = reset_env_jit(rng_reset)
 
-    ## run diffusion
-
-    betas = jnp.linspace(args.beta0, args.betaT, args.Ndiffuse)
-    alphas = 1.0 - betas
-    alphas_bar = jnp.cumprod(alphas)
-    sigmas = jnp.sqrt(1 - alphas_bar)
-    Sigmas_cond = (
-        (1 - alphas) * (1 - jnp.sqrt(jnp.roll(alphas_bar, 1))) / (1 - alphas_bar)
-    )
-    sigmas_cond = jnp.sqrt(Sigmas_cond)
-    sigmas_cond = sigmas_cond.at[0].set(0.0)
-    print(f"init sigma = {sigmas[-1]:.2e}")
+    ## run path interal
 
     mu_0T = jnp.zeros([args.Hsample, Nu])
 
     @jax.jit
-    def reverse_once(carry, unused):
+    def update_once(carry, unused):
         t, rng, mu_0t = carry
 
         # sample from q_i
         rng, Y0s_rng = jax.random.split(rng)
         eps_u = jax.random.normal(Y0s_rng, (args.Nsample, args.Hsample, Nu))
-        Y0s = eps_u * sigmas[t] + mu_0t
+        Y0s = eps_u + mu_0t
         Y0s = jnp.clip(Y0s, -1.0, 1.0)
 
         # esitimate mu_0tm1
@@ -119,34 +107,26 @@ def run_diffusion(args: Args):
         return (t - 1, rng, mu_0tm1), rews.mean()
 
     # run reverse
-    def reverse(mu_0T, rng):
+    def update(mu_0T, rng):
         mu_0t = mu_0T
         mu_0ts = []
-        with tqdm(range(args.Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
+        with tqdm(range(args.Nrefine - 1, 0, -1), desc="Path Integrating") as pbar:
             for t in pbar:
                 carry_once = (t, rng, mu_0t)
-                (t, rng, mu_0t), rew = reverse_once(carry_once, None)
+                (t, rng, mu_0t), rew = update_once(carry_once, None)
                 mu_0ts.append(mu_0t)
                 # Update the progress bar's suffix to show the current reward
-                pbar.set_postfix({'rew': f'{rew:.2e}'})
+                pbar.set_postfix({"rew": f"{rew:.2e}"})
         return mu_0ts
 
     rng_exp, rng = jax.random.split(rng)
-    mu_0ts = reverse(mu_0T, rng_exp)
+    mu_0ts = update(mu_0T, rng_exp)
     mu_0ts = jnp.array(mu_0ts)
-    if args.render:
-        path = f"{mbd.__path__[0]}/../results/{args.env_name}"
-        if not os.path.exists(path):
-            os.makedirs(path)
-        jnp.save(f"{path}/mu_0ts.npy", mu_0ts)
-        webpage = render_us(state_init, mu_0ts[-1])
-        with open(f"{path}/rollout.html", "w") as f:
-            f.write(webpage)
     rew_final = eval_us(state_init, mu_0ts[-1]).mean()
 
     return rew_final
-    
 
 
 if __name__ == "__main__":
-    run_diffusion(args=tyro.cli(Args))
+    rew = run_path_integral(args=tyro.cli(Args))
+    print(f"rew: {rew:.2e}")

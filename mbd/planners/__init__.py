@@ -1,1 +1,1 @@
-from mbd.planners import mc_mbd
+from mbd.planners import mc_mbd, path_integral
