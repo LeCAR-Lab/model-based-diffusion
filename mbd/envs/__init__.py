@@ -3,10 +3,11 @@ from brax import envs as brax_envs
 from .pushT import PushT
 from .hopper import Hopper
 from .humanoidstandup import HumanoidStandup
+from .humanoidtrack import HumanoidTrack
 from .humanoidrun import HumanoidRun
 from .walker2d import Walker2d
 from .cartpole import Cartpole
-from .car_2d import Car2d
+from .car2d import Car2d
 
 def get_env(env_name: str):
     if env_name == "pushT":
@@ -17,6 +18,8 @@ def get_env(env_name: str):
         return HumanoidStandup()
     elif env_name == "humanoidrun":
         return HumanoidRun()
+    elif env_name == "humanoidtrack":
+        return HumanoidTrack()
     elif env_name == "walker2d":
         return Walker2d()
     elif env_name == "cartpole":

@@ -104,9 +104,6 @@ class Car2d:
         logpd = 0.0-(
             (jnp.clip(jnp.linalg.norm(xs_err, axis=-1), 0.0, 0.5) / 0.5) ** 2
         ).mean(axis=-1)
-        # - (
-        #     (jnp.clip(jnp.abs(theta_err), 0.0, jnp.pi/2) / jnp.pi/2) ** 2
-        # ).mean(axis=-1)
         return logpd
 
     @property

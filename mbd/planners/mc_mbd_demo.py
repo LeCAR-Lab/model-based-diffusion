@@ -167,6 +167,8 @@ def run_diffusion(args: Args):
             env.render(ax, xs)
             ax.plot(env.xref[:, 0], env.xref[:, 1], "r--")
             plt.savefig(f"{path}/rollout.png")
+        # elif args.env_name in ["humanoidtrack"]:
+        #     pass
         else:
             render_us = functools.partial(
                 mbd.utils.render_us, step_env_jit, env.sys.replace(dt=env.dt)

@@ -7,6 +7,7 @@ from dataclasses import dataclass
 import tyro
 from tqdm import tqdm
 from matplotlib import pyplot as plt
+from time import time
 
 import mbd
 
@@ -122,17 +123,20 @@ def run_diffusion(args: Args):
     def reverse(mu_0T, rng):
         mu_0t = mu_0T
         mu_0ts = []
+        _, _ = reverse_once((0, rng, mu_0t), None) # to compile
+        t0 = time()
         with tqdm(range(args.Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
             for t in pbar:
                 carry_once = (t, rng, mu_0t)
+                t0 = time()
                 (t, rng, mu_0t), rew = reverse_once(carry_once, None)
                 mu_0ts.append(mu_0t)
                 # Update the progress bar's suffix to show the current reward
                 pbar.set_postfix({'rew': f'{rew:.2e}'})
-        return jnp.array(mu_0ts)
+        return jnp.array(mu_0ts), time() - t0
 
     rng_exp, rng = jax.random.split(rng)
-    mu_0ts = reverse(mu_0T, rng_exp)
+    mu_0ts, run_time = reverse(mu_0T, rng_exp)
     if not args.not_render:
         path = f"{mbd.__path__[0]}/../results/{args.env_name}"
         if not os.path.exists(path):
@@ -157,10 +161,11 @@ def run_diffusion(args: Args):
                 f.write(webpage)
     rew_final = eval_us(state_init, mu_0ts[-1]).mean()
 
-    return rew_final
+    return rew_final, run_time
     
 
 
 if __name__ == "__main__":
-    rew_final = run_diffusion(args=tyro.cli(Args))
+    rew_final, ts = run_diffusion(args=tyro.cli(Args))
     print(f"final reward = {rew_final:.2e}")
+    print(f"total time = {ts:.2f}")

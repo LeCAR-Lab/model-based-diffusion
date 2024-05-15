@@ -61,7 +61,9 @@ elif env_name == "car":
     # )
     xs_demo = jnp.zeros([31, 4]) + env.x_goal
     xs_demo_load = jnp.load("../figure/rrt_path.npy")
-    xs_demo = xs_demo.at[: xs_demo_load.shape[0], : xs_demo_load.shape[1]].set(xs_demo_load)
+    xs_demo = xs_demo.at[: xs_demo_load.shape[0], : xs_demo_load.shape[1]].set(
+        xs_demo_load
+    )
 else:
     env = envs.get_environment(env_name=env_name, backend=backend)
 Nx = env.observation_size
@@ -124,6 +126,7 @@ def eval_us(state, us):
     _, rews = jax.lax.scan(step, state, us)
     return rews
 
+
 @jax.jit
 def rollout_us(state, us):
     def step(state, u):
@@ -141,12 +144,15 @@ def eval_xs_full(xs, us):
     xs_next = states_next.obs
     return -((xs[1:] - xs_next) ** 2).sum()
 
+
 def eval_xs_partial(xs, us):
     state0 = State(obs=xs[0], reward=0.0, done=0.0)
     xs_rollout = rollout_us(state0, us)
     return -((xs[1:, :2] - xs_rollout[:, :2]) ** 2).sum()
 
+
 eval_xs = eval_xs_partial
+
 
 def render_us(state, us):
     rollout = []

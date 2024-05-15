@@ -1,39 +1,49 @@
-from brax import actuator
 from brax import base
 from brax.envs.base import PipelineEnv, State
-from brax.io import mjcf, html
-from etils import epath
+from brax.io import mjcf
 import jax
 from jax import numpy as jnp
-import mujoco
+import pickle
+from functools import partial
+from matplotlib import pyplot as plt
 
 import mbd
 
 
 class HumanoidTrack(PipelineEnv):
 
-    def __init__(self, backend="positional", **kwargs):
+    def __init__(self, mode="jog"):
         sys = mjcf.load(f"{mbd.__path__[0]}/assets/humanoidtrack.xml")
-        n_frames = 5
-        kwargs["n_frames"] = kwargs.get("n_frames", n_frames)
-        self.torso_idx = sys.link_names.index("torso")
+        self.H = 50  # traj time 1.5s
         body_names = [
-            'torso', 
-            'left_thigh',
-            'right_thigh', 
-            'left_shin',
-            'right_shin',
+            "torso",
+            "left_thigh",
+            "right_thigh",
+            "left_shin",
+            "right_shin",
         ]
         self.track_body_names = body_names
-        self.track_body_idx = {
-            name: sys.link_names.index(name) for name in self.track_body_names
-        }
+        self.track_body_idx = jnp.array(
+            [sys.link_names.index(name) for name in self.track_body_names]
+        )
         self.ref_body_names = [name + "_ref" for name in body_names]
-        self.ref_body_idx = {
-            name: sys.link_names.index(name) for name in self.ref_body_names
-        }
+        self.ref_body_idx = jnp.array(
+            [sys.link_names.index(name) for name in self.ref_body_names]
+        )
+        with open(f"{mbd.__path__[0]}/assets/jog_xref.pkl", "rb") as f:
+            xs_demo_dict = pickle.load(f)
+        xref = []
+        for name in body_names:
+            x = xs_demo_dict[name]
+            if len(x) < self.H:
+                x = jnp.concatenate([x, jnp.tile(x[-1:], (self.H - len(x), 1))], axis=0)
+            else:
+                x = x[70 : (self.H + 70)]
+            xref.append(x)
+        self.xref = jnp.stack(xref, axis=0)
+        self.rew_xref = 1.0
 
-        super().__init__(sys=sys, backend=backend, **kwargs)
+        super().__init__(sys=sys, backend="positional", n_frames=5)
 
     def reset(self, rng: jax.Array) -> State:
         """Resets the environment to an initial state."""
@@ -53,42 +63,45 @@ class HumanoidTrack(PipelineEnv):
     def step(self, state: State, action: jax.Array) -> State:
         """Runs one timestep of the environment's dynamics."""
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
-
+        # set reference state for visualization
+        for i, idx in enumerate(self.ref_body_idx):
+            pipeline_state = pipeline_state.replace(
+                x=pipeline_state.x.replace(
+                    pos=pipeline_state.x.pos.at[idx].set(
+                        self.xref[i, jnp.int32(state.done)]
+                    ),
+                )
+            )
         # quad_impact_cost is not computed here
 
         obs = self._get_obs(pipeline_state)
-        reward = self._get_reward(pipeline_state)
+        reward = self._get_reward(state)
 
-        return state.replace(pipeline_state=pipeline_state, obs=obs, reward=reward)
+        return state.replace(
+            pipeline_state=pipeline_state, obs=obs, reward=reward, done=state.done + 1
+        )
 
     def _get_obs(self, pipeline_state: base.State) -> jax.Array:
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd], axis=-1)
 
-    def _get_reward(self, pipeline_state: base.State) -> jax.Array:
-        return (
-            # pipeline_state.x.pos[0, 0]
-            - jnp.clip(jnp.abs(pipeline_state.x.pos[0, 2] - 1.2), -1.0, 1.0)
-            - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1
+    def _get_reward(self, state) -> jax.Array:
+        x_feet = state.pipeline_state.x.pos[self.track_body_idx[-2:], 0]
+        x_feet_ref = self.xref[-2:, jnp.int32(state.done), 0]
+        err_feet = jnp.abs(x_feet - x_feet_ref)
+        err_feet = jnp.clip(err_feet, 0.0, 0.5)
+        return 1.0 + (
+            # -jnp.abs(state.pipeline_state.xd.vel[0, 0] - 1.6)
+            # - jnp.abs(state.pipeline_state.x.pos[0, 2] - 1.3)
+            # - jnp.abs(state.pipeline_state.x.pos[0, 1]) * 0.1
+            - err_feet.sum()
         )
 
-
-def main():
-    env = HumanoidTrack()
-    rng = jax.random.PRNGKey(1)
-    env_step = jax.jit(env.step)
-    env_reset = jax.jit(env.reset)
-    state = env_reset(rng)
-    rollout = [state.pipeline_state]
-    for _ in range(1):
-        rng, rng_act = jax.random.split(rng)
-        act = jax.random.uniform(rng_act, (env.action_size,), minval=-1.0, maxval=1.0)
-        state = env_step(state, act)
-        print(state.pipeline_state.x.pos[0, 2])
-        rollout.append(state.pipeline_state)
-    webpage = html.render(env.sys.replace(dt=env.dt), rollout)
-    with open("../figure/humanoid.html", "w") as f:
-        f.write(webpage)
-
-
-if __name__ == "__main__":
-    main()
+    @partial(jax.jit, static_argnums=(0,))
+    def eval_xref_logpd(self, pipeline_state):
+        xs = pipeline_state.x.pos[:, self.track_body_idx].transpose(1, 0, 2)
+        xs_err = xs - self.xref
+        logpd = (
+            0.0
+            - ((jnp.clip(jnp.linalg.norm(xs_err, axis=-1), 0.0, 0.5) / 0.5) ** 2).mean()
+        )
+        return logpd
