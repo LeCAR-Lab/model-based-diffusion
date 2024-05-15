@@ -1,7 +1,7 @@
 import tyro
 import numpy as np
 from dataclasses import dataclass, field
-from typing import List
+from time import time
 
 import mbd
 
@@ -9,28 +9,34 @@ import mbd
 @dataclass
 class Args:
     algo: str = "mc_mbd"  # path_integral
+    update_method: str = "softmax"  # softmax, cma-es, cem
     mode: str = "seed"  # temp
     env_name: str = "ant"
 
 
 def run_multiple_seed(args: Args):
     rews = []
+    times = []
     for seed in range(8):
         if args.algo == "path_integral":
             local_args = mbd.planners.path_integral.Args(
-                seed=seed, env_name=args.env_name
+                seed=seed, env_name=args.env_name, update_method=args.update_method
             )
+            t0 = time()
             rew = mbd.planners.path_integral.run_path_integral(local_args)
+            times.append(time() - t0)
         elif args.algo == "mc_mbd":
             local_args = mbd.planners.mc_mbd.Args(
-                seed=seed, env_name=args.env_name, render=False
+                seed=seed, env_name=args.env_name, not_render=True
             )
             rew = mbd.planners.mc_mbd.run_diffusion(local_args)
         else:
             raise NotImplementedError
         rews.append(rew)
     rews = np.array(rews)
+    times = np.array(times)
     print(f"rew: {rews.mean():.2f} \pm {rews.std():.2f}")
+    print(f"time: {times.mean():.2f} \pm {times.std():.2f}")
 
 
 def run_multiple_temp(args: Args):

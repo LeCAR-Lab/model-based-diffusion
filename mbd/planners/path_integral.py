@@ -1,15 +1,6 @@
 import functools
-import os
-from datetime import datetime
-from brax import envs
-from brax.training.agents.ppo import train as ppo
-from brax.training.agents.ppo import networks as ppo_networks
-from brax.training.acme import running_statistics
-from brax.io import model, html
 import jax
-from jax import lax
 from jax import numpy as jnp
-from matplotlib import pyplot as plt
 from jax import config
 from dataclasses import dataclass
 import tyro
@@ -27,6 +18,7 @@ class Args:
     # exp
     seed: int = 0
     disable_recommended_params: bool = False
+    update_method: str = "softmax"  # softmax, cma-es, cem
     # env
     env_name: str = (
         "ant"  # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d"
@@ -38,9 +30,36 @@ class Args:
     temp_sample: float = 0.1  # temperature for sampling
 
 
+@jax.jit
+def softmax_update(weights, Y0s, sigma, mu_0t):
+    mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)
+    return mu_0tm1, sigma
+
+
+@jax.jit
+def cma_es_update(weights, Y0s, sigma, mu_0t):
+    mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)
+    Yerr = Y0s - mu_0t
+    sigma = jnp.sqrt(jnp.einsum("n,nij->ij", weights, Yerr**2)).mean() * sigma
+    return mu_0tm1, sigma
+
+
+@jax.jit
+def cem_update(weights, Y0s, sigma, mu_0t):
+    idx = jnp.argsort(weights)[::-1][:10]
+    mu_0tm1 = jnp.mean(Y0s[idx], axis=0)
+    return mu_0tm1, sigma
+
+
 def run_path_integral(args: Args):
 
     rng = jax.random.PRNGKey(seed=args.seed)
+
+    update_fn = {
+        "softmax": softmax_update,
+        "cma-es": cma_es_update,
+        "cem": cem_update,
+    }[args.update_method]
 
     ## setup env
 
@@ -90,11 +109,11 @@ def run_path_integral(args: Args):
 
     @jax.jit
     def update_once(carry, unused):
-        t, rng, mu_0t = carry
+        t, rng, mu_0t, sigma = carry
 
         # sample from q_i
         rng, Y0s_rng = jax.random.split(rng)
-        eps_u = jax.random.normal(Y0s_rng, (args.Nsample, args.Hsample, Nu))
+        eps_u = jax.random.normal(Y0s_rng, (args.Nsample, args.Hsample, Nu)) * sigma
         Y0s = eps_u + mu_0t
         Y0s = jnp.clip(Y0s, -1.0, 1.0)
 
@@ -102,18 +121,19 @@ def run_path_integral(args: Args):
         rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
         logp0 = (rews - rews.mean()) / rews.std() / args.temp_sample
         weights = jax.nn.softmax(logp0)
-        mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
+        mu_0tm1, sigma = update_fn(weights, Y0s, sigma, mu_0t)
 
-        return (t - 1, rng, mu_0tm1), rews.mean()
+        return (t - 1, rng, mu_0tm1, sigma), rews.mean()
 
     # run reverse
     def update(mu_0T, rng):
+        sigma = 1.0
         mu_0t = mu_0T
         mu_0ts = []
         with tqdm(range(args.Nrefine - 1, 0, -1), desc="Path Integrating") as pbar:
             for t in pbar:
-                carry_once = (t, rng, mu_0t)
-                (t, rng, mu_0t), rew = update_once(carry_once, None)
+                carry_once = (t, rng, mu_0t, sigma)
+                (t, rng, mu_0t, sigma), rew = update_once(carry_once, None)
                 mu_0ts.append(mu_0t)
                 # Update the progress bar's suffix to show the current reward
                 pbar.set_postfix({"rew": f"{rew:.2e}"})

@@ -1,11 +1,11 @@
 from brax import envs as brax_envs
 
-from mbd.envs.pushT import PushT
-from mbd.envs.hopper import Hopper
-from mbd.envs.humanoidstandup import HumanoidStandup
-from mbd.envs.humanoidrun import HumanoidRun
-from mbd.envs.walker2d import Walker2d
-from mbd.envs.cartpole import Cartpole
+from .pushT import PushT
+from .hopper import Hopper
+from .humanoidstandup import HumanoidStandup
+from .humanoidrun import HumanoidRun
+from .walker2d import Walker2d
+from .cartpole import Cartpole
 
 def get_env(env_name: str):
     if env_name == "pushT":
