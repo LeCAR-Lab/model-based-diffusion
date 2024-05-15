@@ -6,6 +6,7 @@ from .humanoidstandup import HumanoidStandup
 from .humanoidrun import HumanoidRun
 from .walker2d import Walker2d
 from .cartpole import Cartpole
+from .car_2d import Car2d
 
 def get_env(env_name: str):
     if env_name == "pushT":
@@ -20,6 +21,8 @@ def get_env(env_name: str):
         return Walker2d()
     elif env_name == "cartpole":
         return Cartpole()
+    elif env_name == "car2d":
+        return Car2d()
     elif env_name in ["ant", "halfcheetah"]:
         return brax_envs.get_environment(env_name=env_name, backend="positional")
     else:

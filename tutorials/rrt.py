@@ -285,8 +285,8 @@ def main():
         obstacle_list=obstacleList,
         play_area=[-2.0, 2.0, -2.0, 2.0],
         robot_radius=0.1, 
-        path_resolution=0.2, 
-        expand_dis=0.2,
+        path_resolution=0.1, 
+        expand_dis=0.6,
         )
     path = rrt.planning(animation=show_animation)
 
@@ -306,8 +306,22 @@ def main():
 
     # save best path as npy file
     path = np.array(path)[::-1]
+    # linear interpolate path to 0.2 resolution
+    path_interp = []
+    for i in range(path.shape[0] - 1):
+        p1 = path[i]
+        p2 = path[i+1]
+        d = np.linalg.norm(p2 - p1)
+        n = int(d / 0.1)
+        for j in range(n):
+            path_interp.append(p1 + (p2 - p1) * j / n)
+    for _ in range(50-len(path_interp)):
+        path_interp.append(path[-1])
+    path = np.array(path_interp)
+    plt.plot(path[:, 0], path[:, 1], '-r')
+    plt.show()
     print("path shape", path.shape)
-    np.save('../figure/rrt_path', path)
+    np.save('../figure/rrt_path.npy', path)
 
 
 if __name__ == '__main__':

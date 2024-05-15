@@ -30,6 +30,7 @@ class Args:
     temp_sample: float = 0.1  # temperature for sampling
     beta0: float = 1e-4  # initial beta
     betaT: float = 1e-2  # final beta
+    enable_demo: bool = False
 
 
 def run_diffusion(args: Args):
@@ -70,8 +71,8 @@ def run_diffusion(args: Args):
     # env functions
     step_env_jit = jax.jit(env.step)
     reset_env_jit = jax.jit(env.reset)
-    eval_us = jax.jit(functools.partial(mbd.utils.eval_us, step_env_jit))
-    
+    # eval_us = jax.jit(functools.partial(mbd.utils.eval_us, step_env_jit))
+    rollout_us = jax.jit(functools.partial(mbd.utils.rollout_us, step_env_jit))
 
     rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
     state_init = reset_env_jit(rng_reset)
@@ -110,9 +111,26 @@ def run_diffusion(args: Args):
         Y0s = jnp.clip(Y0s, -1.0, 1.0)
 
         # esitimate mu_0tm1
-        rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-        rew_std = jnp.maximum(rews.std(), 1e-6)
-        logp0 = (rews - rews.mean()) / rew_std / args.temp_sample
+        rewss, qs = jax.vmap(rollout_us, in_axes=(None, 0))(state_init, Y0s)
+        rews = rewss.mean(axis=-1)
+        rew_std = rews.std()
+        rew_std = jnp.where(rew_std < 1e-4, 1.0, rew_std)
+        rew_mean = rews.mean()
+        logp0 = (rews - rew_mean) / rew_std / args.temp_sample
+
+        # evalulate demo
+        if args.enable_demo:
+            xref_logpds = jax.vmap(env.eval_xref_logpd)(qs)
+            # top_idx = jnp.argsort(xref_logpds)[:128]
+            Y0s_demo = Y0s
+            # logp0_demo = (xref_logpds + env.rew_xref - rew_mean) / rew_std / args.temp_sample
+            logp0_demo = (xref_logpds - xref_logpds.mean()) / xref_logpds.std() / args.temp_sample
+
+            logp0 = logp0_demo
+
+            # logp0 = jnp.concatenate([logp0, logp0_demo], axis=0)
+            # Y0s = jnp.concatenate([Y0s, Y0s_demo], axis=0)
+
         weights = jax.nn.softmax(logp0)
         mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
 
@@ -147,6 +165,7 @@ def run_diffusion(args: Args):
                 state = step_env_jit(state, mu_0ts[-1,t])
                 xs = jnp.concatenate([xs, state.pipeline_state[None]], axis=0)
             env.render(ax, xs)
+            ax.plot(env.xref[:, 0], env.xref[:, 1], "r--")
             plt.savefig(f"{path}/rollout.png")
         else:
             render_us = functools.partial(
@@ -155,7 +174,8 @@ def run_diffusion(args: Args):
             webpage = render_us(state_init, mu_0ts[-1])
             with open(f"{path}/rollout.html", "w") as f:
                 f.write(webpage)
-    rew_final = eval_us(state_init, mu_0ts[-1]).mean()
+    rewss_final, _ = rollout_us(state_init, mu_0ts[-1])
+    rew_final = rewss_final.mean()
 
     return rew_final
     

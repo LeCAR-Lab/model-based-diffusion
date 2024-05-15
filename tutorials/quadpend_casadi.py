@@ -359,4 +359,3 @@ for i in range(N+1):
     ax.set_aspect('equal')
     ax.grid(True)
     plt.savefig(f"../figure/obs_{i}.png")
-plt.show()
