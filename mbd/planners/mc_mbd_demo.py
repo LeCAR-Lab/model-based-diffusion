@@ -22,7 +22,9 @@ class Args:
     disable_recommended_params: bool = False
     not_render: bool = False
     # env
-    env_name: str = "ant" # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d", "car2d"
+    env_name: str = (
+        "ant"  # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d", "car2d"
+    )
     # diffusion
     Nsample: int = 2048  # number of samples
     Hsample: int = 50  # horizon
@@ -47,7 +49,7 @@ def run_diffusion(args: Args):
         "humanoidstandup": 0.1,
         "humanoidrun": 0.1,
         "walker2d": 0.1,
-        "pushT": 0.2, 
+        "pushT": 0.2,
     }
     Ndiffuse_recommend = {
         "pushT": 200,
@@ -120,16 +122,18 @@ def run_diffusion(args: Args):
 
         # evalulate demo
         if args.enable_demo:
+            rew_weighted = jnp.sum(rews * jax.nn.softmax(logp0))
+            demo_portion = env.rew_xref / (env.rew_xref + rew_weighted)
+            jax.debug.print("demo_portion={x}", x=demo_portion)
+            Ndemo = jnp.int32(args.Nsample * demo_portion)
+
             xref_logpds = jax.vmap(env.eval_xref_logpd)(qs)
-            # top_idx = jnp.argsort(xref_logpds)[:128]
-            Y0s_demo = Y0s
-            # logp0_demo = (xref_logpds + env.rew_xref - rew_mean) / rew_std / args.temp_sample
-            logp0_demo = (xref_logpds - xref_logpds.mean()) / xref_logpds.std() / args.temp_sample
+            top_idx = jnp.argsort(xref_logpds)[:Ndemo]
+            logpdemo = (
+                (xref_logpds + env.rew_xref - rew_mean) / rew_std / args.temp_sample
+            )
 
-            logp0 = logp0_demo
-
-            # logp0 = jnp.concatenate([logp0, logp0_demo], axis=0)
-            # Y0s = jnp.concatenate([Y0s, Y0s_demo], axis=0)
+            logp0 = logp0.at[top_idx].set(logpdemo)
 
         weights = jax.nn.softmax(logp0)
         mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
@@ -146,7 +150,7 @@ def run_diffusion(args: Args):
                 (t, rng, mu_0t), rew = reverse_once(carry_once, None)
                 mu_0ts.append(mu_0t)
                 # Update the progress bar's suffix to show the current reward
-                pbar.set_postfix({'rew': f'{rew:.2e}'})
+                pbar.set_postfix({"rew": f"{rew:.2e}"})
         return jnp.array(mu_0ts)
 
     rng_exp, rng = jax.random.split(rng)
@@ -162,7 +166,7 @@ def run_diffusion(args: Args):
             xs = jnp.array([state_init.pipeline_state])
             state = state_init
             for t in range(mu_0ts.shape[1]):
-                state = step_env_jit(state, mu_0ts[-1,t])
+                state = step_env_jit(state, mu_0ts[-1, t])
                 xs = jnp.concatenate([xs, state.pipeline_state[None]], axis=0)
             env.render(ax, xs)
             ax.plot(env.xref[:, 0], env.xref[:, 1], "r--")
@@ -178,7 +182,6 @@ def run_diffusion(args: Args):
     rew_final = rewss_final.mean()
 
     return rew_final
-    
 
 
 if __name__ == "__main__":
