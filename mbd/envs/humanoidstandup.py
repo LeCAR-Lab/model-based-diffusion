@@ -49,7 +49,7 @@ class HumanoidStandup(PipelineEnv):
 
     def _get_reward(self, pipeline_state: base.State) -> jax.Array:
         return (
-            2.0
+            1.5
             - jnp.clip(jnp.abs(pipeline_state.x.pos[0, 2] - 1.3), -2.0, 1.0)
             - jnp.abs(pipeline_state.x.pos[0, 0]) * 0.1
             - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1

@@ -18,13 +18,12 @@ def run_multiple_seed(args: Args):
     rews = []
     times = []
     for seed in range(8):
+        t0 = time()
         if args.algo == "path_integral":
             local_args = mbd.planners.path_integral.Args(
                 seed=seed, env_name=args.env_name, update_method=args.update_method
             )
-            t0 = time()
             rew = mbd.planners.path_integral.run_path_integral(local_args)
-            times.append(time() - t0)
         elif args.algo == "mc_mbd":
             local_args = mbd.planners.mc_mbd.Args(
                 seed=seed, env_name=args.env_name, not_render=True
@@ -32,6 +31,7 @@ def run_multiple_seed(args: Args):
             rew = mbd.planners.mc_mbd.run_diffusion(local_args)
         else:
             raise NotImplementedError
+        times.append(time() - t0)
         rews.append(rew)
     rews = np.array(rews)
     times = np.array(times)
