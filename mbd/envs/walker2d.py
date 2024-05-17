@@ -59,5 +59,5 @@ class Walker2d(PipelineEnv):
         """Returns the environment reward."""
         return (
             pipeline_state.x.pos[0, 0]
-            - jp.clip(jp.abs(pipeline_state.x.pos[0, 2] - 1.1), -1.0, 1.0) * 0.5
+            - jp.clip(jp.abs(pipeline_state.x.pos[0, 2] - 1.1), -1.0, 1.0) * 0.5 
         )

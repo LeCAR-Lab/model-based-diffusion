@@ -47,9 +47,6 @@ class Car2d:
         r_obs = 0.3
         self.obs_center = jnp.array(
             [
-                # [-r_obs * 3, r_obs * 5],
-                # [-r_obs * 3, r_obs * 4],
-                # [-r_obs * 3, r_obs * 3],
                 [-r_obs * 3, r_obs * 2],
                 [-r_obs * 2, r_obs * 2],
                 [-r_obs * 1, r_obs * 2],
@@ -58,9 +55,6 @@ class Car2d:
                 [0.0, 0.0],
                 [0.0, -r_obs * 1],
                 [-r_obs * 3, -r_obs * 2],
-                # [-r_obs * 3, -r_obs * 3],
-                # [-r_obs * 3, -r_obs * 4],
-                # [-r_obs * 3, -r_obs * 5],
                 [-r_obs * 2, -r_obs * 2],
                 [-r_obs * 1, -r_obs * 2],
                 [0.0, -r_obs * 2],
@@ -70,6 +64,7 @@ class Car2d:
         self.x0 = jnp.array([-0.5, 0.0, jnp.pi*3/2])
         self.xg = jnp.array([0.5, 0.0, 0.0])
         self.xref = jnp.load(f"{mbd.__path__[0]}/assets/car2d_xref.npy")
+        # self.xref = jnp.load(f"{mbd.__path__[0]}/../figure/car2d_xref.npy")
         xref_diff = jnp.diff(self.xref, axis=0)
         theta = jnp.arctan2(xref_diff[:, 0], xref_diff[:, 1])
         self.thetaref = jnp.append(theta, theta[-1])
