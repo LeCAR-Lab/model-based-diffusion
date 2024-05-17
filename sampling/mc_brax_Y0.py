@@ -78,18 +78,18 @@ Sigmas_cond = (1 - alphas) * (1 - jnp.sqrt(jnp.roll(alphas_bar, 1))) / (1 - alph
 sigmas_cond = jnp.sqrt(Sigmas_cond)
 sigmas_cond = sigmas_cond.at[0].set(0.0)
 print(f"init sigma = {sigmas[-1]:.2e}")
-# sigma0 = 1e-4
-# sigmaT = 1.0
-# k = ((sigma0 / sigmaT)**2) ** (1 / (Ndiffuse - 1))
-# vars = k ** (Ndiffuse - 1 - jnp.arange(Ndiffuse)) * (sigmaT**2)
-# sigmas = jnp.sqrt(vars)
-# plt.plot(sigmas)
-# plt.savefig(f"{path}/sigma.png")
-# print(f"init sigma = {sigmas[-1]:.2e}")
-# print(f"final sigma = {sigmas[0]:.2e}")
+sigma0 = 1e-3
+sigmaT = 100.0
+k = ((sigma0 / sigmaT)**2) ** (1 / (Ndiffuse - 1))
+vars = k ** (Ndiffuse - 1 - jnp.arange(Ndiffuse)) * (sigmaT**2)
+sigmas = jnp.sqrt(vars)
+plt.plot(sigmas)
+plt.savefig(f"{path}/sigma.png")
+print(f"init sigma = {sigmas[-1]:.2e}")
+print(f"final sigma = {sigmas[0]:.2e}")
 # exit()
 # sigma0 = 9e-5
-# sigmaT = 0.9
+# sigmaT = 10.0
 # sigmas = jnp.exp(jnp.linspace(jnp.log(sigma0), jnp.log(sigmaT), Ndiffuse))
 # alphas_bar = 1 - sigmas**2
 # betas = 1 - alphas_bar
