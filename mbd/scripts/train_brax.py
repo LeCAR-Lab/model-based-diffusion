@@ -31,7 +31,7 @@ state = jax.jit(env.reset)(rng=rng_reset)
 train_fn = {
     "ant": functools.partial(
         ppo.train,
-        num_timesteps=50_000_000,
+        num_timesteps=100_000_000,
         num_evals=10,
         reward_scaling=10,
         episode_length=1000,
@@ -45,7 +45,7 @@ train_fn = {
         entropy_cost=1e-2,
         num_envs=4096,
         batch_size=2048,
-        seed=1,
+        seed=0,
     ),
     "hopper": functools.partial(
         sac.train,

@@ -157,7 +157,7 @@ def run_diffusion(args: Args):
             os.makedirs(path)
         jnp.save(f"{path}/mu_0ts.npy", mu_0ts)
         if args.env_name == "car2d":
-            fig, ax = plt.subplots()
+            fig, ax = plt.subplots(1, 1, figsize=(3, 3))
             # rollout
             xs = jnp.array([state_init.pipeline_state])
             state = state_init
@@ -165,7 +165,9 @@ def run_diffusion(args: Args):
                 state = step_env_jit(state, mu_0ts[-1, t])
                 xs = jnp.concatenate([xs, state.pipeline_state[None]], axis=0)
             env.render(ax, xs)
-            ax.plot(env.xref[:, 0], env.xref[:, 1], "r--")
+            if args.enable_demo:
+                ax.plot(env.xref[:, 0], env.xref[:, 1], "g--", label="RRT path")
+            ax.legend()
             plt.savefig(f"{path}/rollout.png")
         # elif args.env_name in ["humanoidtrack"]:
         #     pass

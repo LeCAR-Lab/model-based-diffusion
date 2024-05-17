@@ -41,6 +41,7 @@ def cma_es_update(weights, Y0s, sigma, mu_0t):
     mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)
     Yerr = Y0s - mu_0t
     sigma = jnp.sqrt(jnp.einsum("n,nij->ij", weights, Yerr**2)).mean() * sigma
+    sigma = jnp.maximum(sigma, 1e-3)
     return mu_0tm1, sigma
 
 
