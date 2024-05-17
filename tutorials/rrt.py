@@ -182,7 +182,7 @@ class RRT:
                 self.plot_circle(rnd.x, rnd.y, self.robot_radius, '-r')
         for node in self.node_list:
             if node.parent:
-                plt.plot(node.path_x, node.path_y, "-g")
+                plt.plot(node.path_x, node.path_y, "-og")
 
         for (ox, oy, size) in self.obstacle_list:
             self.plot_circle(ox, oy, size)
@@ -261,17 +261,32 @@ def main():
     print("start " + __file__)
 
     # ====Search Path with RRT====
-    obstacleList = [(-1.0, 1.0, 0.5), (-0.5, 1.0, 0.5), (0.0, 1.0, 0.5),
-                    (0.0, 0.5, 0.5), (0.0, 0.0, 0.5), (0.0, -0.5, 0.5), (0.0, -1.0, 0.5), 
-                    (-0.5, -1.0, 0.5), (-1.0, -1.0, 0.5)]
-    # Set Initial parameters
+    r_obs = 0.3
+    obs_center = np.array([
+        [-r_obs * 3, r_obs * 2], [-r_obs * 2, r_obs * 2], [-r_obs * 1, r_obs * 2], [0.0, r_obs * 2],
+        [0.0, r_obs * 1], [0.0, 0.0], [0.0, -r_obs * 1],
+        [-r_obs * 3, -r_obs * 2], [-r_obs * 2, -r_obs * 2], [-r_obs * 1, -r_obs * 2], [0.0, -r_obs * 2],
+    ])
+    obstacleList = []
+    # obstacleList = [
+    #     (0.0, 0.0, 0.3), (0.0, 1.0, 0.3), (0.0, -1.0, 0.3), 
+    #     (-1.0, 0.0, 0.3), (-1.0, 1.0, 0.3), (-1.0, -1.0, 0.3),
+    #     (1.0, 0.0, 0.3), (1.0, 1.0, 0.3), (1.0, -1.0, 0.3)
+    # ]
+    for i in range(obs_center.shape[0]):
+        obstacleList.append(
+            (obs_center[i, 0], obs_center[i, 1], r_obs)
+        )
+# Set Initial parameters
     rrt = RRT(
-        start=[-1.0, 0.0],
-        goal=[1.0, 0.0],
+        start=[-0.5, 0.0],
+        goal=[0.5, 0.0],
         rand_area=[-2.0, 2.0],
         obstacle_list=obstacleList,
         play_area=[-2.0, 2.0, -2.0, 2.0],
-        robot_radius=0.1
+        robot_radius=0.1, 
+        path_resolution=0.1, 
+        expand_dis=0.6,
         )
     path = rrt.planning(animation=show_animation)
 
@@ -285,14 +300,28 @@ def main():
             rrt.draw_graph()
             plt.plot([x for (x, y) in path], [y for (x, y) in path], '-r')
             plt.grid(True)
-            plt.pause(0.01)  # Need for Mac
-            plt.savefig(f'../figure/rrt_{len(rrt.node_list)+1}.png')
-            plt.show()
+            plt.pause(0.1)  # Need for Mac
+            # plt.savefig(f'../figure/rrt_{len(rrt.node_list)+1}.png')
+        plt.show()
 
-    # save best path
-    with open('../figure/rrt_path.txt', 'w') as f:
-        for (x, y) in path:
-            f.write(f'{x} {y}\n')
+    # save best path as npy file
+    path = np.array(path)[::-1]
+    # linear interpolate path to 0.2 resolution
+    path_interp = []
+    for i in range(path.shape[0] - 1):
+        p1 = path[i]
+        p2 = path[i+1]
+        d = np.linalg.norm(p2 - p1)
+        n = int(d / 0.1)
+        for j in range(n):
+            path_interp.append(p1 + (p2 - p1) * j / n)
+    for _ in range(50-len(path_interp)):
+        path_interp.append(path[-1])
+    path = np.array(path_interp)
+    plt.plot(path[:, 0], path[:, 1], '-r')
+    plt.show()
+    print("path shape", path.shape)
+    np.save('../figure/rrt_path.npy', path)
 
 
 if __name__ == '__main__':

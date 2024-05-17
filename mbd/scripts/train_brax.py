@@ -9,20 +9,20 @@ import jax
 from jax import numpy as jnp
 from matplotlib import pyplot as plt
 from jax import config
-import argparse
+import tyro
+from dataclasses import dataclass
 
-## setup env
-parser = argparse.ArgumentParser()
-parser.add_argument("--env_name", type=str, default="halfcheetah")
-parser.add_argument("--backend", type=str, default="positional")
-args = parser.parse_args()
-env_name = args.env_name
-backend = args.backend
-if env_name == "pushT":
-    from pushT import PushT
-    env = PushT()
-else:
-    env = envs.get_environment(env_name=env_name, backend=backend)
+import mbd
+
+
+@dataclass
+class Args:
+    env_name: str = "halfcheetah"
+
+
+args = tyro.cli(Args)
+
+env = mbd.envs.get_env(args.env_name)
 rng = jax.random.PRNGKey(seed=0)
 rng, rng_reset = jax.random.split(rng)
 state = jax.jit(env.reset)(rng=rng_reset)
@@ -66,22 +66,22 @@ train_fn = {
         seed=1,
     ),
     "walker2d": functools.partial(
-        sac.train,
-        num_timesteps=7_864_320,
+        ppo.train,
+        num_timesteps=50_000_000,
         num_evals=20,
-        reward_scaling=5,
+        reward_scaling=1,
         episode_length=1000,
         normalize_observations=True,
         action_repeat=1,
-        discounting=0.997,
-        learning_rate=6e-4,
-        num_envs=128,
-        batch_size=128,
-        grad_updates_per_step=32,
-        max_devices_per_host=1,
-        max_replay_size=1048576,
-        min_replay_size=8192,
-        seed=1,
+        unroll_length=20,
+        num_minibatches=32,
+        num_updates_per_batch=8,
+        discounting=0.95,
+        learning_rate=3e-4,
+        entropy_cost=0.001,
+        num_envs=2048,
+        batch_size=512,
+        seed=3,
     ),
     "halfcheetah": functools.partial(
         ppo.train,
@@ -121,28 +121,28 @@ train_fn = {
     ),
     "pushT": functools.partial(
         ppo.train,
-        num_timesteps=10_000_000,
-        num_evals=100,
-        reward_scaling=5,
+        num_timesteps=100_000_000,
+        num_evals=10,
+        reward_scaling=1.0,
         episode_length=100,
         normalize_observations=True,
         action_repeat=1,
-        unroll_length=30,
+        unroll_length=20,
         num_minibatches=16,
         num_updates_per_batch=8,
-        discounting=0.95,
+        discounting=0.99,
         learning_rate=3e-4,
         entropy_cost=1e-2,
-        num_envs=8192,
-        batch_size=512,
-        seed=0,
+        num_envs=2048,
+        batch_size=1024,
+        seed=2,
     ),
-    "humanoid": functools.partial(
+    "humanoidrun": functools.partial(
         ppo.train,
-        num_timesteps=50_000_000,
+        num_timesteps=100_000_000,
         num_evals=10,
         reward_scaling=0.1,
-        episode_length=1000,
+        episode_length=100,
         normalize_observations=True,
         action_repeat=1,
         unroll_length=10,
@@ -173,22 +173,8 @@ train_fn = {
         batch_size=1024,
         seed=1,
     ),
-}[env_name]
+}[args.env_name]
 
-max_y = {
-    "ant": 8000,
-    "halfcheetah": 8000,
-    "hopper": 2500,
-    "humanoid": 13000,
-    "humanoidstandup": 75_000,
-    "reacher": 5,
-    "walker2d": 5000,
-    "pusher": 0,
-    "pushT": 100, 
-}[env_name]
-min_y = {"reacher": -100, "pusher": -150, "pushT": -50}.get(env_name, 0)
-
-fig, ax = plt.subplots()
 xdata, ydata = [], []
 times = [datetime.now()]
 
@@ -197,14 +183,7 @@ def progress(num_steps, metrics):
     times.append(datetime.now())
     xdata.append(num_steps)
     ydata.append(metrics["eval/episode_reward"])
-    print(f"step: {num_steps}, reward: {metrics['eval/episode_reward']:.2f}")
-    # ax.clear()
-    # ax.set_xlim([0, train_fn.keywords["num_timesteps"]])
-    # ax.set_ylim([min_y, max_y])
-    # ax.set_xlabel("# environment steps")
-    # ax.set_ylabel("reward per episode")
-    # ax.plot(xdata, ydata)
-    # plt.pause(0.01)
+    print(f"step: {num_steps}, episode return: {metrics['eval/episode_reward']:.2f}")
 
 
 make_inference_fn, params, _ = train_fn(environment=env, progress_fn=progress)
@@ -212,7 +191,7 @@ make_inference_fn, params, _ = train_fn(environment=env, progress_fn=progress)
 print(f"time to jit: {times[1] - times[0]}")
 print(f"time to train: {times[-1] - times[1]}")
 
-path = f"../figure/{env_name}/{backend}"
+path = f"{mbd.__path__[0]}/../results/{args.env_name}"
 if not os.path.exists(path):
     os.makedirs(path)
 model.save_params(f"{path}/params", params)
@@ -223,7 +202,6 @@ model.save_params(f"{path}/params", params)
 # @title Visualizing a trajectory of the learned inference function
 
 # create an env with auto-reset
-# env = envs.create(env_name=env_name, backend=backend)
 
 inference_fn = make_inference_fn(params)
 
@@ -231,9 +209,25 @@ jit_env_reset = jax.jit(env.reset)
 jit_env_step = jax.jit(env.step)
 jit_inference_fn = jax.jit(inference_fn)
 
+rew = []
+Nstep = 40 if args.env_name == "pushT" else 50
+for i in range(8):
+    rng, rng_i = jax.random.split(rng)
+    state = jit_env_reset(rng=rng_i)
+    rews = []
+    for _ in range(Nstep):
+        act_rng, rng = jax.random.split(rng)
+        act, _ = jit_inference_fn(state.obs, act_rng)
+        state = jit_env_step(state, act)
+        rews.append(state.reward)
+    rew.append(jnp.mean(jnp.array(rews)))
+rew = jnp.array(rew)
+print(f"mean reward: {rew.mean():.2f}, std: {rew.std():.2f}")
+
 rollout = []
 state = jit_env_reset(rng=rng_reset)
-for _ in range(1000):
+
+for _ in range(Nstep):
     rollout.append(state.pipeline_state)
     act_rng, rng = jax.random.split(rng)
     act, _ = jit_inference_fn(state.obs, act_rng)

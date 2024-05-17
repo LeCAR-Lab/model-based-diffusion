@@ -1,0 +1,53 @@
+<mujoco model="pushT">
+    <option timestep="0.01" integrator="Euler" gravity="0 0 0.0" />
+
+    <worldbody>
+
+        <light diffuse=".5 .5 .5" pos="0 0 3" dir="0 0 -1" />
+
+        <geom name="table" type="plane" pos="0 0.0 -0.07" size="2 2 0.1" contype="0" conaffinity="0"
+            rgba="0.5 0.5 0.5 1" />
+
+        <body name="pusher" pos="0.0 0 0.0">
+            <geom name="pusher_geom" type="sphere" size="0.05" rgba="0 1 0 1"
+                friction="1 0.001 0.0001" mass="1.0" />
+            <joint name="pusher_x" type="slide" axis="1 0 0" limited="true" range="-1 1" />
+            <joint name="pusher_y" type="slide" axis="0 1 0" limited="true" range="-1 1" />
+        </body>
+
+        <body name="slider" pos="0.0 0 0.0">
+            <!-- <geom name="slider_geom" type="box" size="0.10 0.10 0.05" rgba="0 0 1 1"
+                friction="1 0.1 0.1" mass="0.1" /> -->
+            <geom name="slider_geoms" type="box" size="0.15 0.05 0.05" rgba="0 0 1 1"
+                friction="1 0.1 0.1" mass="0.05" pos="0.0 0 0.0" />
+            <geom name="slider_geoms2" type="box" size="0.05 0.15 0.05" rgba="0 0 1 1"
+                friction="1 0.1 0.1" mass="0.05" pos="-0.1 0 0.0" />
+            <joint name="slider_x" type="slide" axis="1 0 0" limited="true" range="-1 1"
+                damping="3.0" />
+            <joint name="slider_y" type="slide" axis="0 1 0" limited="true" range="-1 1"
+                damping="3.0" />
+            <joint name="slider_z_rot" type="hinge" axis="0 0 1" damping="0.03" />
+        </body>
+
+        <body name="goal" pos="0.0 0 0.0">
+            <!-- <geom name="goal_geom" type="box" size="0.10 0.10 0.05" rgba="1 0 0 0.1"
+                density="0.00001" contype="0" conaffinity="0" /> -->
+            <geom name="goal_geoms" type="box" size="0.15 0.05 0.05" rgba="1 0 0 0.1"
+                density="0.00001" contype="0" conaffinity="0" pos="0.0 0 0.0" />
+            <geom name="goal_geoms2" type="box" size="0.05 0.15 0.05" rgba="1 0 0 0.1"
+                density="0.00001" contype="0" conaffinity="0" pos="-0.1 0 0.0" />
+            <joint name="goal_x" type="slide" axis="1 0 0" limited="true" range="-1 1" />
+            <joint name="goal_y" type="slide" axis="0 1 0" limited="true" range="-1 1" />
+            <joint name="goal_z_rot" type="hinge" axis="0 0 1" />
+        </body>
+
+    </worldbody>
+
+    <actuator>
+        <!-- <position name="pusher_x" joint="pusher_x" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/>
+        <position name="pusher_y" joint="pusher_y" ctrllimited="true" ctrlrange="-1 1" kp="50" kv="10"/> -->
+        <motor name="pusher_x" joint="pusher_x" ctrlrange="-1 1" gear="30" />
+        <motor name="pusher_y" joint="pusher_y" ctrlrange="-1 1" gear="30" />
+    </actuator>
+
+</mujoco>

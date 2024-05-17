@@ -3,12 +3,18 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Define the time horizon and number of control intervals
-T = 6.0  # Time horizon
+T = 5.0  # Time horizon
 dt = 0.1  # Time step
 N = int(T // dt)  # Number of control intervals
-Ntraj = 8  # Number of trajectories to diffuse
+Ntraj = 1  # Number of trajectories to diffuse
 Ndiff = 30
-obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
+r_obs = 0.3
+obs_center = np.array([
+    [-r_obs * 3, r_obs * 2], [-r_obs * 2, r_obs * 2], [-r_obs * 1, r_obs * 2], [0.0, r_obs * 2],
+    [0.0, r_obs * 1], [0.0, 0.0], [0.0, -r_obs * 1],
+    [-r_obs * 3, -r_obs * 2], [-r_obs * 2, -r_obs * 2], [-r_obs * 1, -r_obs * 2], [0.0, -r_obs * 2],
+])
+# obs_center = np.array([[0.0, 0.0], [0.0, 1.0], [0.0, -1.0]])  # Center of the obstacle
 obs_radius = 0.3  # Radius of the obstacle
 
 
@@ -16,8 +22,8 @@ obs_radius = 0.3  # Radius of the obstacle
 task = "car"
 Q = np.diag([1.0, 0.1, 0.1, 0.1])
 R = np.diag([0.1, 0.1])
-x0 = np.array([-1.0, 0.0, 0.0, 0.0])
-xf = np.array([1.0, 0.0, 0.0, 0.0])
+x0 = np.array([-0.5, 0.0, 0.0, 0.0])
+xf = np.array([0.5, 0.0, 0.0, 0.0])
 u_max = np.array([1.0, 1.0])
 u_min = np.array([-1.0, -1.0])
 nx = 4
@@ -26,9 +32,9 @@ nu = 2
 
 def dynamics(x, u):
     return ca.vertcat(
-        x[3] * ca.sin(x[2]),  # x_dot
-        x[3] * ca.cos(x[2]),  # y_dot
-        x[3] * u[0] * np.pi / 3,  # theta_dot
+        x[3] * ca.sin(x[2])*1.0,  # x_dot
+        x[3] * ca.cos(x[2])*1.0,  # y_dot
+        x[3] * u[0] * np.pi / 3 * 2.0,  # theta_dot
         u[1] * 6.0,  # v_dot
     )
 
@@ -171,12 +177,16 @@ def plot_traj(ax, xss, uss, yxss, yuss):
 
 # Initialize the trajectory
 def generate_xs():
-    xmid = np.array([0.0, (np.random.uniform(1.0, 1.5))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
-    xmid = np.zeros(nx)
-    xs = np.concatenate([
-        np.linspace(x0, xmid, N//2+1).T,
-        np.linspace(xmid, xf, N-N//2).T
-    ], axis=1)
+    # xmid = np.array([0.0, (np.random.uniform(1.0, 1.5))*np.sign(np.random.uniform(-1.0, 1.0)), 0.0, 0.0])
+    # xmid = np.zeros(nx)
+    # xs = np.concatenate([
+    #     np.linspace(x0, xmid, N//2+1).T,
+    #     np.linspace(xmid, xf, N-N//2).T
+    # ], axis=1)
+    x_rrt = np.load("../mbd/assets/rrt_path.npy")
+    xs = np.zeros((nx, N + 1))
+    xs[:2, :N+1] = x_rrt.T
+    xs[:2, -1] = x_rrt[-1]
     # xs = xs + np.random.normal(0, 0.1, xs.shape)
     return xs
 

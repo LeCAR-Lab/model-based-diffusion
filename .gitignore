@@ -162,7 +162,7 @@ cython_debug/
 *.png
 *.jpg
 *.jpeg
-*.npy
+# *.npy
 *.npz
 *.mp4
 

@@ -58,7 +58,7 @@ else:
     step_env = step_env_jit
 
 reset_env = jax.jit(env.reset)
-rng = jax.random.PRNGKey(seed=0)
+rng = jax.random.PRNGKey(seed=1)
 rng, rng_reset = jax.random.split(rng)  # NOTE: rng_reset should never be changed.
 state_init = reset_env(rng_reset)
 path = f"../figure/{env_name}/{backend}"
@@ -71,7 +71,7 @@ Nexp = 16
 Nsample = 1024
 Hsample = 50
 if env_name == "point":
-    Nsample = 128
+    Nsample = 4096
     Hsample = 20
 Ndiffuse = 100
 temp_sample = 0.5
@@ -91,6 +91,27 @@ Y0s_hat = jax.random.normal(rng_y0, (Nsample, Hsample, Nu))
 logs_Y0_hat = jnp.zeros(Nsample)
 rng, rng_y = jax.random.split(rng)
 Yts = jax.random.normal(rng_y, (Nexp, Hsample, Nu))
+
+
+def sample_GMM(means, log_weights, key, sigma, num_samples):
+    components = jax.random.categorical(key, log_weights, shape=(num_samples,))
+    samples = means[components] + sigma * jax.random.normal(key, (num_samples,))
+    return samples
+
+
+sample_GMM_vmap = jax.vmap(sample_GMM, in_axes=(1, None, 0, None, None))
+sample_GMM_vvmap = jax.vmap(sample_GMM_vmap, in_axes=(1, None, 0, None, None))
+
+
+def get_logp_GMM(means, log_weights, x, sigma):
+    log_probs = jnp.log(jax.nn.softmax(log_weights))
+    log_probs = log_probs + jax.scipy.stats.norm.logpdf(x, means, sigma)
+    return jax.scipy.special.logsumexp(log_probs)
+
+
+get_logp_GMM_vmap = jax.vmap(get_logp_GMM, in_axes=(1, None, 0, None))
+get_logp_GMM_vvmap = jax.vmap(get_logp_GMM_vmap, in_axes=(1, None, 0, None))
+get_logp_GMM_vvvmap = jax.vmap(get_logp_GMM_vvmap, in_axes=(None, None, 0, None))
 
 
 # evaluate the diffused uss
@@ -131,65 +152,42 @@ def render_us(state, us, name="rollout"):
 
 @jax.jit
 def reverse_once(carry, unused):
-    t, rng, Y0s_hat, logs_Y0_hat, Yts = carry
+    # mean_Y0s: (Nsample, Hsample, Nu)
+    # logq_Y0s: (Nsample)
+    t, rng, mean_Y0s, logq_Y0s, Yts = carry
 
-    # Method1: sampling around Y0_hat q(Y0)
-    # sample Y0 from q(Y0)
-    rng, Y0s_rng = jax.random.split(rng)
-    eps_u = jax.random.normal(Y0s_rng, (Nsample, Hsample, Nu))
-    Y0s = eps_u * sigmas[t] + Y0s_hat  # (Nsample, Hsample, Nu)
+    # sample Y0s
+    rng, rng_Y0s = jax.random.split(rng)
+    rng_Y0s = jax.random.split(rng_Y0s, (Hsample, Nu))
+    sigma_Y0 = sigmas[t]
+    Y0s = sample_GMM_vvmap(mean_Y0s, logq_Y0s, rng_Y0s, sigma_Y0, Nsample) # (Hsample, Nu, Nsample)
+    Y0s = jnp.moveaxis(Y0s, 2, 0) # (Nsample, Hsample, Nu)
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
-    # q(Y0)
-    eps_Y0s = (Y0s[None] - Y0s_hat[:, None]).mean(
-        axis=[2, 3]
-    )  # (Nsample Y0s_hat, Nsample Y0s)
-    p_Y0s = jnp.exp(
-        -0.5 * eps_Y0s**2 / sigmas[t] ** 2
-    )  # (Nsample Y0s_hat, Nsample Y0s)
-    weight_mixture = jax.nn.softmax(logs_Y0_hat)  # (Nsample Y0s_hat)
-    p_Y0s = jnp.einsum("i, ij->j", weight_mixture, p_Y0s)  # (Nsample Y0s)
-    logq_Y0 = jnp.log(p_Y0s)
+    logq_Y0s = get_logp_GMM_vvvmap(mean_Y0s, logq_Y0s, Y0s, sigma_Y0).mean(axis=[1,2]) # (Nsample)
 
-    # calculate reward for Y0s
+    # calculate logp_Y0s_new
     eps_Yt = jnp.clip(
         (Y0s[None] * jnp.sqrt(alphas_bar[t]) - Yts[:, None]) / sigmas[t], -2.0, 2.0
     )  # (Nexp, Nsample, Hsample, Nu)
-    logp_Yt_Y0 = -0.5 * jnp.mean(eps_Yt**2, axis=(2, 3))  # (Nexp, Nsample)
+    logp_Yt_Y0s = -0.5 * jnp.mean(eps_Yt**2, axis=(2, 3))  # (Nexp, Nsample)
     rews = jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s).mean(axis=-1)
-
     rews_normed = (rews - rews.mean()) / rews.std()  # p(Y0)
-    logp_Y0 = rews_normed / temp_sample
-    logp_Y0_bar = logp_Y0 + logp_Yt_Y0 - logq_Y0  # p(Y0) * p(Yt|Y0) / q(Y0)
+    logp_Y0s = rews_normed / temp_sample
+    logp_Y0s_bar = logp_Y0s + logp_Yt_Y0s - logq_Y0s  # p(Y0) * p(Yt|Y0) / q(Y0)
+    logp_Y0s_bar = logp_Y0s_bar - jnp.max(logp_Y0s_bar)
+    logq_Y0s_new = logp_Y0s - logq_Y0s
+    logq_Y0s_new = logq_Y0s_new - jnp.max(logq_Y0s_new)
 
-    # p(Y0) / q(Y0)
-    logs_Y0_hat_new = logp_Y0 - logq_Y0
-
+    # calculate mean_Y0s_new
     Y0s_bar = jnp.einsum(
-        "mn,nij->mij", jax.nn.softmax(logp_Y0_bar, axis=-1), Y0s
+        "mn,nij->mij", jax.nn.softmax(logp_Y0s_bar, axis=-1), Y0s
     )  # (Nexp, Hsample, Nu)
+    mean_Y0s_new = Y0s
 
-    # rng, idx_rng = jax.random.split(rng)
-    # idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
-    # Y0s_hat_new = Y0s[idx]
-    # logs_Y0_hat_new = jnp.zeros(Nsample)
-
-    rng, idx_rng = jax.random.split(rng)
-    std_w_rew = jnp.std(jax.nn.softmax(logs_Y0_hat_new, axis=-1), axis=-1).mean()
-    need_resample = std_w_rew > 3.0e-2  # NOTE: enable resampling
-    idx = jax.random.categorical(idx_rng, logs_Y0_hat_new, shape=(Nsample,))
-    Y0s_hat_new_resample = Y0s[idx]  # (Nsample, Hsample, Nu)
-    logs_Y0_hat_new_resample = jnp.zeros(Nsample)
-    Y0s_hat_new = need_resample * Y0s_hat_new_resample + (1 - need_resample) * Y0s
-    logs_Y0_hat_new = (
-        need_resample * logs_Y0_hat_new_resample + (1 - need_resample) * logs_Y0_hat
-    )
-
-    # calculate score function
+    # calculate Ytm1
     scores = (
         alphas_bar[t] / (1 - alphas_bar[t]) * (Y0s_bar - Yts / jnp.sqrt(alphas_bar[t]))
     )
-
-    # calculate Ytm1
     rng, Ytm1_rng = jax.random.split(rng)
     eps_Ytm1 = jax.random.normal(Ytm1_rng, (Nexp, Hsample, Nu))
     Ytsm1 = (
@@ -198,11 +196,13 @@ def reverse_once(carry, unused):
     )
 
     jax.debug.print("=============t={x}============", x=t)
-    jax.debug.print("std_w_rew={x}", x=std_w_rew)
+    # jax.debug.print("std_w_rew={x}", x=std_w_rew)
     jax.debug.print("rews={x} \pm {y}", x=rews.mean(), y=rews.std())
     jax.debug.print(
         "Y0 hat best = {x}",
-        x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, Y0s_hat).mean(axis=-1).max(),
+        x=jax.vmap(eval_us, in_axes=(None, 0))(state_init, mean_Y0s)
+        .mean(axis=-1)
+        .max(),
     )
     jax.debug.print(
         "Yt best = {x}",
@@ -213,7 +213,7 @@ def reverse_once(carry, unused):
         .max(),
     )
 
-    return (t - 1, rng, Y0s_hat_new, logs_Y0_hat_new, Ytsm1), rews.mean()
+    return (t - 1, rng, mean_Y0s_new, logq_Y0s_new, Ytsm1), rews.mean()
 
 
 # run reverse
@@ -230,8 +230,9 @@ def reverse(Y0s_hat, logs_Y0_hat, Yts, rng):
             Y0s_hat = carry_once[2]  # (Nsample, Hsample, Nu)
             X0s_hat = jax.vmap(rollout_us, in_axes=(None, 0))(state_init, Y0s_hat)
             vis_env(ax, X0s_hat[:16])
-            plt.savefig(f"{path}/{i}.png")
-            plt.savefig("../figure/point.png")
+            # plt.savefig(f"{path}/{i}.png")
+            # plt.savefig("../figure/point.png")
+            plt.pause(0.1)
 
     (tT, rng, Y0_hat, Y0), rew = carry_once
     rng, rng_Y0 = jax.random.split(rng)

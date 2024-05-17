@@ -69,6 +69,7 @@ Ndiffuse = 200
 temp_sample = 0.5
 beta0 = 1e-4
 betaT = 1e-2
+betaT = 1e-3 # DEBUG
 betas = jnp.linspace(beta0, betaT, Ndiffuse)
 betas = jnp.exp(jnp.linspace(jnp.log(beta0), jnp.log(betaT), Ndiffuse))
 alphas = 1.0 - betas
@@ -143,8 +144,8 @@ def render_us(state, us):
 
 
 @jax.jit
-def reverse_once(carry, unused):
-    t, rng, Y0_hat, Yt = carry
+def reverse_once(carry, step_size):
+    t, rng, Y0_hat, Yt  = carry
 
     # calculate Y0_hat
     # Method1: sampling around Y0_hat q(Y0)
@@ -206,8 +207,8 @@ def reverse_once(carry, unused):
     rng, Ytm1_rng = jax.random.split(rng)
     eps_Ytm1 = jax.random.normal(Ytm1_rng, (Hsample, Nu))
     Ytm1 = (
-        1 / jnp.sqrt(1.0 - betas[t]) * (Yt + 0.5 * betas[t] * score)
-        + 1.0*jnp.sqrt(betas[t]) * eps_Ytm1
+        1 / jnp.sqrt(1.0 - betas[t]) * (Yt + 0.5 * betas[t] * score*step_size)
+        + 1.0*jnp.sqrt(betas[t]) * eps_Ytm1 * jnp.sqrt(step_size) * 0.5
     )
 
     return (t - 1, rng, Y0_hat_new, Ytm1), rews.mean()
@@ -215,8 +216,14 @@ def reverse_once(carry, unused):
 
 # run reverse
 def reverse(Y0_hat, Yt, rng):
+    step_size_start = 80.0
+    step_size_end = 5e-2
+    step_sizes = jnp.exp(jnp.linspace(jnp.log(step_size_start), jnp.log(step_size_end), 1000))
+    for i in range(1000):
+        print(f"=========step size: {step_sizes[i]:.2e}============")
+        (_, rng, Y0_hat, Y0), rew = reverse_once((Ndiffuse-1, rng, Y0_hat, Yt), step_sizes[i])
     carry_once = (Ndiffuse - 1, rng, Y0_hat, Yt)
-    (t0, rng, Y0_hat, Y0), rew = jax.lax.scan(reverse_once, carry_once, None, Ndiffuse)
+    (t0, rng, Y0_hat, Y0), rew = jax.lax.scan(reverse_once, carry_once, jnp.ones(Ndiffuse))
     # for i in range(Ndiffuse):
     #     carry_once, rew = reverse_once(carry_once, None)
     # (tT, rng, Y0_hat, Y0), rew = carry_once
