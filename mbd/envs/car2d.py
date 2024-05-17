@@ -121,18 +121,20 @@ class Car2d:
                 self.obs_center[i, :], self.obs_radius, color="k", fill=True, alpha=0.5
             )
             ax.add_artist(circle)
-        ax.quiver(
-            xs[:, 0],
-            xs[:, 1],
-            jnp.sin(xs[:, 2]),
-            jnp.cos(xs[:, 2]),
-            range(self.H + 1),
-            cmap="Reds",
-        )
+        # ax.quiver(
+        #     xs[:, 0],
+        #     xs[:, 1],
+        #     jnp.sin(xs[:, 2]),
+        #     jnp.cos(xs[:, 2]),
+        #     range(self.H + 1),
+        #     cmap="Reds",
+        # )
+        ax.scatter(xs[:, 0], xs[:, 1], c=range(self.H + 1), cmap="Reds")
+        ax.plot(xs[:, 0], xs[:, 1], "r-", label="Car path")
         ax.set_xlabel("x")
         ax.set_ylabel("y")
         ax.set_xlim(-2, 2)
         ax.set_ylim(-2, 2)
         ax.set_aspect("equal")
         ax.grid(True)
-        ax.set_title("Car 2D")
+        # ax.set_title("Car 2D")

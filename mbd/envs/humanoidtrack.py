@@ -85,15 +85,14 @@ class HumanoidTrack(PipelineEnv):
         return jnp.concatenate([pipeline_state.q, pipeline_state.qd], axis=-1)
 
     def _get_reward(self, state) -> jax.Array:
-        x_feet = state.pipeline_state.x.pos[self.track_body_idx[-2:], 0]
-        x_feet_ref = self.xref[-2:, jnp.int32(state.done), 0]
-        err_feet = jnp.abs(x_feet - x_feet_ref)
-        err_feet = jnp.clip(err_feet, 0.0, 0.5)
+        # x_feet = state.pipeline_state.x.pos[self.track_body_idx[-2:], 0]
+        # x_feet_ref = self.xref[-2:, jnp.int32(state.done), 0]
+        # err_feet = jnp.abs(x_feet - x_feet_ref)
+        # err_feet = jnp.clip(err_feet, 0.0, 0.5)
         return 1.0 + (
-            # -jnp.abs(state.pipeline_state.xd.vel[0, 0] - 1.6)
-            # - jnp.abs(state.pipeline_state.x.pos[0, 2] - 1.3)
-            # - jnp.abs(state.pipeline_state.x.pos[0, 1]) * 0.1
-            - err_feet.sum()
+            -jnp.abs(state.pipeline_state.xd.vel[0, 0] - 1.6)
+            - jnp.abs(state.pipeline_state.x.pos[0, 2] - 1.3)
+            - jnp.abs(state.pipeline_state.x.pos[0, 1]) * 0.1
         )
 
     @partial(jax.jit, static_argnums=(0,))
