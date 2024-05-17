@@ -9,12 +9,15 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from time import time
 
-dim = 800
-fn_name = "ackley"  # rastrigin
+dim = 400
+fn_name = "rastrigin"  # rastrigin
 a, b, c = 20, 0.2, 2 * jnp.pi
-x_min, x_max = -5.0, 10.0
+if fn_name == "ackley":
+    x_min, x_max = -5.0, 10.0
+else:
+    x_min, x_max = -5.0, 5.0
 
-Nsample = 128
+Nsample = 64
 Ndiffuse = 100
 temp_sample = 1.0
 betas = jnp.linspace(1e-4, 1e-2, Ndiffuse)
@@ -31,10 +34,12 @@ def ackley(X):
 
 
 def rastrigin(X):
+    X = x_min + (x_max - x_min) * (X + 1.0) / 2.0  # map to [-5, 10]
     return 10.0 * dim + jnp.sum(X**2 - 10.0 * jnp.cos(2.0 * jnp.pi * X), axis=-1)
 
 
 def levy(X):
+    X = x_min + (x_max - x_min) * (X + 1.0) / 2.0  # map to [-5, 10]
     w = 1.0 + (X - 1.0) / 4.0
     part1 = jnp.sin(jnp.pi * w[..., 0]) ** 2
     part2 = jnp.sum(
@@ -62,9 +67,11 @@ def reverse_once(carry, unused):
     eps_u = jax.random.normal(Y0s_rng, (Nsample, dim))
     Y0s = eps_u * sigmas[t] + mu_0t
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
-
+    
     # esitimate mu_0tm1
     Js = -jax.vmap(eval_fn)(Y0s)
+    # jax print the best Js
+    # jax.debug.print(Js)
     logp0 = (Js - Js.mean()) / Js.std() / temp_sample
     weights = jax.nn.softmax(logp0)
     mu_0tm1 = jnp.einsum("n,ni->i", weights, Y0s)  # NOTE: update only with reward
@@ -73,10 +80,13 @@ def reverse_once(carry, unused):
 
 
 rng = jax.random.PRNGKey(0)
-mu_0t = jnp.zeros([Nsample, dim])
+mu_0t = jnp.zeros([Nsample, dim]) + 1.0 * jax.random.normal(rng, (Nsample, dim))
 _, _ = reverse_once((0, rng, mu_0t), None)  # to compile
 with tqdm(range(Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
     for t in pbar:
         carry_once = (t, rng, mu_0t)
         (t, rng, mu_0t), J = reverse_once(carry_once, None)
+        print('-------------------')
+        print(J)
+        jnp.save("mu_0t", mu_0t)
         pbar.set_postfix({"rew": f"{J:.2e}"})
