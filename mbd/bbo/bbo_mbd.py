@@ -26,8 +26,8 @@ alphas_bar = jnp.cumprod(alphas)
 sigmas = jnp.sqrt(1 - alphas_bar)
 
 
-def ackley(X):
-    X = x_min + (x_max - x_min) * (X + 1.0) / 2.0  # map to [-5, 10]
+def ackley(Y):
+    X = x_min + (x_max - x_min) * (Y + 1.0) / 2.0  # map to [-5, 10]
     part1 = -a * jnp.exp(-b / jnp.sqrt(dim) * jnp.linalg.norm(X, axis=-1))
     part2 = -(jnp.exp(jnp.mean(jnp.cos(c * X), axis=-1)))
     return part1 + part2 + a + jnp.e
@@ -69,9 +69,7 @@ def reverse_once(carry, unused):
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
     
     # esitimate mu_0tm1
-    Js = -jax.vmap(eval_fn)(Y0s)
-    # jax print the best Js
-    # jax.debug.print(Js)
+    Js = -jax.vmap(eval_fn)(Y0s) 
     logp0 = (Js - Js.mean()) / Js.std() / temp_sample
     weights = jax.nn.softmax(logp0)
     mu_0tm1 = jnp.einsum("n,ni->i", weights, Y0s)  # NOTE: update only with reward
