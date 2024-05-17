@@ -57,6 +57,9 @@ class Hopper(PipelineEnv):
     def _get_reward(self, pipeline_state: base.State) -> jax.Array:
         """Returns the environment reward."""
         return (
-            pipeline_state.x.pos[0, 0]
+            pipeline_state.x.pos[0, 0] + 
+            # pipeline_state.x.pos[1, 0] + 
+            # pipeline_state.x.pos[2, 0] + 
+            # pipeline_state.x.pos[3, 0] + 
             - jp.clip(jp.abs(pipeline_state.x.pos[0, 2] - 1.0), -1.0, 1.0) * 0.5
         )

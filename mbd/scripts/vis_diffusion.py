@@ -13,7 +13,7 @@ import mbd
 
 jax.config.update("jax_platform_name", "cpu")
 
-env_name = "hopper"
+env_name = "walker2d"
 env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50

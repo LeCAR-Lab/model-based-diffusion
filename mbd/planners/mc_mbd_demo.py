@@ -169,6 +169,8 @@ def run_diffusion(args: Args):
                 ax.plot(env.xref[:, 0], env.xref[:, 1], "g--", label="RRT path")
             ax.legend()
             plt.savefig(f"{path}/rollout.png")
+            # jnp.save(f"{path}/xs1.npy", xs)
+            # jnp.save(f"{path}/xref1.npy", env.xref)
         # elif args.env_name in ["humanoidtrack"]:
         #     pass
         else:

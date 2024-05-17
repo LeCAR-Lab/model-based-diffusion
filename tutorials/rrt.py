@@ -302,7 +302,7 @@ def main():
             plt.grid(True)
             plt.pause(0.1)  # Need for Mac
             # plt.savefig(f'../figure/rrt_{len(rrt.node_list)+1}.png')
-        plt.show()
+        # plt.show()
 
     # save best path as npy file
     path = np.array(path)[::-1]
@@ -319,7 +319,7 @@ def main():
         path_interp.append(path[-1])
     path = np.array(path_interp)
     plt.plot(path[:, 0], path[:, 1], '-r')
-    plt.show()
+    plt.savefig('../figure/rrt_path.png')
     print("path shape", path.shape)
     np.save('../figure/rrt_path.npy', path)
 
