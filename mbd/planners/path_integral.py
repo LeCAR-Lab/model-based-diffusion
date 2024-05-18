@@ -18,7 +18,7 @@ class Args:
     # exp
     seed: int = 0
     disable_recommended_params: bool = False
-    update_method: str = "softmax"  # softmax, cma-es, cem
+    update_method: str = "mppi"  # mppi, cma-es, cem
     # env
     env_name: str = (
         "ant"  # "humanoidstandup", "ant", "halfcheetah", "hopper", "walker2d"
@@ -57,7 +57,7 @@ def run_path_integral(args: Args):
     rng = jax.random.PRNGKey(seed=args.seed)
 
     update_fn = {
-        "softmax": softmax_update,
+        "mppi": softmax_update,
         "cma-es": cma_es_update,
         "cem": cem_update,
     }[args.update_method]

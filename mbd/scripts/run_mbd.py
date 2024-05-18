@@ -1,6 +1,6 @@
 import tyro
 import numpy as np
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from time import time
 
 import mbd
@@ -8,8 +8,8 @@ import mbd
 
 @dataclass
 class Args:
-    algo: str = "mc_mbd"  # path_integral
-    update_method: str = "softmax"  # softmax, cma-es, cem
+    algo: str = "mbd"  # path_integral, mbd
+    update_method: str = "mppi"  # softmax, cma-es, cem
     mode: str = "seed"  # temp
     env_name: str = "ant"
 
@@ -24,11 +24,11 @@ def run_multiple_seed(args: Args):
                 seed=seed, env_name=args.env_name, update_method=args.update_method
             )
             rew = mbd.planners.path_integral.run_path_integral(local_args)
-        elif args.algo == "mc_mbd":
-            local_args = mbd.planners.mc_mbd.Args(
+        elif args.algo == "mbd":
+            local_args = mbd.planners.mbd_planner.Args(
                 seed=seed, env_name=args.env_name, not_render=True
             )
-            rew = mbd.planners.mc_mbd.run_diffusion(local_args)
+            rew = mbd.planners.mbd_planner.run_diffusion(local_args)
         else:
             raise NotImplementedError
         times.append(time() - t0)
@@ -48,15 +48,15 @@ def run_multiple_temp(args: Args):
                 seed=0, env_name=args.env_name, temp_sample=temp
             )
             rew = mbd.planners.path_integral.run_path_integral(local_args)
-        elif args.algo == "mc_mbd":
-            local_args = mbd.planners.mc_mbd.Args(
+        elif args.algo == "mbd":
+            local_args = mbd.planners.mbd_planner.Args(
                 seed=0,
                 env_name=args.env_name,
                 temp_sample=temp,
-                render=False,
+                not_render=True,
                 disable_recommended_params=True,
             )
-            rew = mbd.planners.mc_mbd.run_diffusion(local_args)
+            rew = mbd.planners.mbd_planner.run_diffusion(local_args)
         rews.append(rew)
     rews = np.array(rews)
     best_temp = temps[np.argmax(rews)]

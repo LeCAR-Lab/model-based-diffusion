@@ -1,13 +1,80 @@
-# diffuser-planer
+# Model-based Diffusion for Trajectory Generation
 
-1. dyn_scale = 1.0 ✅
-2. variance schedule depends on the barrier
-3. add visualization ✅
+This repository contains the code for the paper "Model-based Diffusion for Trajectory Generation".
 
-1. change initialization (make the angle orient to outside)
-2. change rotation action scale
-3. change scale update rule (initially, only consider dynamics)
+## Installation
 
-limitation
-1. still have to tune different objective update rules. example: if final loss is too high, will make later points stuck, if barrier goes up too fast, will break the dynamics, for the reward term, the update rule based on the dynamics is not good (for instance, if increase the reward term too fast, it will converge early)
-2. what about also add initial state into the reward term?
+To install the required packages, run the following command:
+
+```bash
+pip install -e .
+```
+
+## Usage
+
+### Model-based Diffusion for Trajectory Optimization
+
+To run model-based diffusion to optimize a trajectory, run the following command:
+
+```bash
+cd mbd/planners
+python mbd_planner.py --env_name $ENV_NAME
+```
+
+where `$ENV_NAME` is the name of the environment, you can choose from `hopper`, `halfcheetah`, `walker2d`, `ant`, `humanoidrun`, `humanoidstandup`, `humanoidtrack`, `car2d`, `pushT`.
+
+To run model-based diffusion combined with demonstrations, run the following command:
+
+```bash
+cd mbd/planners
+python mbd_planner.py --env_name $ENV_NAME --enable_demos
+```
+
+Currently, only the `humanoidtrack`, `car2d` support demonstrations.
+
+To run multiple seeds, run the following command:
+
+```bash
+cd mbd/scripts
+python run_mbd.py --env_name $ENV_NAME
+```
+
+To visualize the diffusion process, run the following command:
+
+```bash
+cd mbd/scripts
+python visualize_mbd.py --env_name $ENV_NAME
+```
+
+Please make sure you have run the planner first to generate the data.
+
+### Model-based Diffusion for Black-box Optimization
+
+To run model-based diffusion for black-box optimization, run the following command:
+
+```bash
+cd mbd/blackbox
+python mbd_opt.py
+```
+
+### Other Baselines
+
+To run RL-based baselines, run the following command:
+
+```bash
+cd mbd/rl
+python train_brax.py --env_name $ENV_NAME
+```
+
+To run other zeroth order trajectory optimization baselines, run the following command:
+
+```bash
+cd mbd/planners
+python path_integral.py --env_name $ENV_NAME --mode $MODE
+```
+
+where `$MODE` is the mode of the planner, you can choose from `mppi`, `cem`, `cma-es`.
+
+## Acknowledgements
+
+* This codebase's environment and RL implementation is built on top of [Brax](https://github.com/google/brax).
