@@ -9,14 +9,17 @@ from tqdm import tqdm
 from matplotlib import pyplot as plt
 from time import time
 
-dim = 400
-fn_name = "rastrigin"  # rastrigin
+import mbd
+
+dim = 800
+fn_name = "Rastrigin"  # Ackley Rastrigin
 a, b, c = 20, 0.2, 2 * jnp.pi
-if fn_name == "ackley":
+if fn_name == "Ackley":
     x_min, x_max = -5.0, 10.0
 else:
     x_min, x_max = -5.0, 5.0
 
+Nexp = 6
 Nsample = 64
 Ndiffuse = 100
 temp_sample = 1.0
@@ -52,9 +55,9 @@ def levy(X):
 
 
 eval_fn = {
-    "ackley": ackley,
-    "rastrigin": rastrigin,
-    "levy": levy,
+    "Ackley": ackley,
+    "Rastrigin": rastrigin,
+    "Levy": levy,
 }[fn_name]
 
 
@@ -67,9 +70,9 @@ def reverse_once(carry, unused):
     eps_u = jax.random.normal(Y0s_rng, (Nsample, dim))
     Y0s = eps_u * sigmas[t] + mu_0t
     Y0s = jnp.clip(Y0s, -1.0, 1.0)
-    
+
     # esitimate mu_0tm1
-    Js = -jax.vmap(eval_fn)(Y0s) 
+    Js = -jax.vmap(eval_fn)(Y0s)
     logp0 = (Js - Js.mean()) / Js.std() / temp_sample
     weights = jax.nn.softmax(logp0)
     mu_0tm1 = jnp.einsum("n,ni->i", weights, Y0s)  # NOTE: update only with reward
@@ -77,14 +80,28 @@ def reverse_once(carry, unused):
     return (t - 1, rng, mu_0tm1), Js.max()
 
 
-rng = jax.random.PRNGKey(0)
-mu_0t = jnp.zeros([Nsample, dim]) + 1.0 * jax.random.normal(rng, (Nsample, dim))
-_, _ = reverse_once((0, rng, mu_0t), None)  # to compile
-with tqdm(range(Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
-    for t in pbar:
-        carry_once = (t, rng, mu_0t)
-        (t, rng, mu_0t), J = reverse_once(carry_once, None)
-        print('-------------------')
-        print(J)
-        jnp.save("mu_0t", mu_0t)
-        pbar.set_postfix({"rew": f"{J:.2e}"})
+def run_exp(seed=0):
+    rng = jax.random.PRNGKey(seed)
+    mu_0t = jnp.zeros([Nsample, dim]) + 1.0 * jax.random.normal(rng, (Nsample, dim))
+    _, _ = reverse_once((0, rng, mu_0t), None)  # to compile
+    xs, ys = [], []
+    with tqdm(range(Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
+        for t in pbar:
+            carry_once = (t, rng, mu_0t)
+            (t, rng, mu_0t), J = reverse_once(carry_once, None)
+            xs.append((Ndiffuse - 1 - t) * Nsample)
+            ys.append(J)
+            pbar.set_postfix({"rew": f"{J:.2e}"})
+    return jnp.array(xs), jnp.array(ys)
+
+
+if __name__ == "__main__":
+    yss = []
+    for seed in range(Nexp):
+        xs, ys = run_exp(seed)
+        yss.append(ys)
+    ys = jnp.stack(yss).mean(axis=0)
+    jnp.save(
+        f"{mbd.__path__[0]}/../results/bbo/{fn_name}-{dim}d_MBD.npy",
+        jnp.array([xs, ys]),
+    )
