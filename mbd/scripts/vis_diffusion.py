@@ -13,7 +13,7 @@ import mbd
 
 jax.config.update("jax_platform_name", "cpu")
 
-env_name = "walker2d"
+env_name = "humanoidtrack"
 env = mbd.envs.get_env(env_name)
 step_env_jit = jax.jit(env.step)
 Hsample = 50
@@ -69,7 +69,12 @@ def dumps(sys, statess) -> str:
                 elif "goal" in name:
                     geom_new["rgba"] = [0.0, 1.0, 0.0, 1.0]
                 elif "_ref" in name:
-                    geom_new["rgba"] = [0.0, 1.0, 0.0, 1.0]
+                    if "torso" in name or "thigh" in name:
+                        geom_new["link_idx"] = geom["link_idx"] + k * (len(link_names) - 1)
+                        a = k / traj_len * 0.8 + 0.2
+                        geom_new["rgba"] = [(1-a), 1.0, (1-a), 1.0]
+                    else:
+                        geom_new["rgba"] = [1.0, 1.0, 1.0, 0.0]
                 else:
                     geom_new["link_idx"] = geom["link_idx"] + k * (len(link_names) - 1)
                     a = k / traj_len * 0.8 + 0.2
@@ -132,6 +137,13 @@ rollouts = []
 if os.path.exists(f"{path}/rollouts.pkl"):
     with open(f"{path}/rollouts.pkl", "rb") as f:
         rollouts = pickle.load(f)
+    rollouts_new = []
+    # for i in range(len(rollouts)):
+    #     if i % 5 == 0 or i == len(rollouts) - 1:
+    #         foo = rollouts[i][::6]
+    #         foo.append(rollouts[i][-1])
+    #         rollouts_new.append(foo)
+    rollouts = rollouts_new
     print("loaded rollouts")
 else:
     for i in range(mu_0ts.shape[0]):
