@@ -92,17 +92,17 @@ def run_diffusion(args: Args):
     sigmas_cond = sigmas_cond.at[0].set(0.0)
     print(f"init sigma = {sigmas[-1]:.2e}")
 
-    mu_0T = jnp.zeros([args.Hsample, Nu])
+    YN = jnp.zeros([args.Hsample, Nu])
 
     @jax.jit
     def reverse_once(carry, unused):
-        t, rng, mu_0t = carry
-        # mu_0t = mu_t / jnp.sqrt(alphas_bar[t])
+        i, rng, Ybar_i = carry
+        Yi = Ybar_i * jnp.sqrt(alphas_bar[i])
 
         # sample from q_i
         rng, Y0s_rng = jax.random.split(rng)
         eps_u = jax.random.normal(Y0s_rng, (args.Nsample, args.Hsample, Nu))
-        Y0s = eps_u * sigmas[t] + mu_0t
+        Y0s = eps_u * sigmas[i] + Ybar_i
         Y0s = jnp.clip(Y0s, -1.0, 1.0)
 
         # esitimate mu_0tm1
@@ -125,37 +125,42 @@ def run_diffusion(args: Args):
             logp0 = (logp0 - logp0.mean()) / logp0.std() / args.temp_sample
 
         weights = jax.nn.softmax(logp0)
-        mu_0tm1 = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
-        
-        return (t - 1, rng, mu_0tm1), rews.mean()
+        Ybar = jnp.einsum("n,nij->ij", weights, Y0s)  # NOTE: update only with reward
+
+        score = 1 / (1.0 - alphas_bar[i]) * (-Yi + jnp.sqrt(alphas_bar[i]) * Ybar)
+        Yim1 = 1 / jnp.sqrt(alphas[i]) * (Yi + (1.0 - alphas_bar[i]) * score)
+
+        Ybar_im1 = Yim1 / jnp.sqrt(alphas_bar[i - 1])
+
+        return (i - 1, rng, Ybar_im1), rews.mean()
 
     # run reverse
-    def reverse(mu_0T, rng):
-        mu_0t = mu_0T
-        mu_0ts = []
+    def reverse(YN, rng):
+        Yi = YN
+        Ybars = []
         with tqdm(range(args.Ndiffuse - 1, 0, -1), desc="Diffusing") as pbar:
-            for t in pbar:
-                carry_once = (t, rng, mu_0t)
-                (t, rng, mu_0t), rew = reverse_once(carry_once, None)
-                mu_0ts.append(mu_0t)
+            for i in pbar:
+                carry_once = (i, rng, Yi)
+                (i, rng, Yi), rew = reverse_once(carry_once, None)
+                Ybars.append(Yi)
                 # Update the progress bar's suffix to show the current reward
                 pbar.set_postfix({"rew": f"{rew:.2e}"})
-        return jnp.array(mu_0ts)
+        return jnp.array(Ybars)
 
     rng_exp, rng = jax.random.split(rng)
-    mu_0ts = reverse(mu_0T, rng_exp)
+    Yi = reverse(YN, rng_exp)
     if not args.not_render:
         path = f"{mbd.__path__[0]}/../results/{args.env_name}"
         if not os.path.exists(path):
             os.makedirs(path)
-        jnp.save(f"{path}/mu_0ts.npy", mu_0ts)
+        jnp.save(f"{path}/mu_0ts.npy", Yi)
         if args.env_name == "car2d":
             fig, ax = plt.subplots(1, 1, figsize=(3, 3))
             # rollout
             xs = jnp.array([state_init.pipeline_state])
             state = state_init
-            for t in range(mu_0ts.shape[1]):
-                state = step_env_jit(state, mu_0ts[-1, t])
+            for t in range(Yi.shape[1]):
+                state = step_env_jit(state, Yi[-1, t])
                 xs = jnp.concatenate([xs, state.pipeline_state[None]], axis=0)
             env.render(ax, xs)
             if args.enable_demo:
@@ -166,10 +171,10 @@ def run_diffusion(args: Args):
             render_us = functools.partial(
                 mbd.utils.render_us, step_env_jit, env.sys.replace(dt=env.dt)
             )
-            webpage = render_us(state_init, mu_0ts[-1])
+            webpage = render_us(state_init, Yi[-1])
             with open(f"{path}/rollout.html", "w") as f:
                 f.write(webpage)
-    rewss_final, _ = rollout_us(state_init, mu_0ts[-1])
+    rewss_final, _ = rollout_us(state_init, Yi[-1])
     rew_final = rewss_final.mean()
 
     return rew_final
