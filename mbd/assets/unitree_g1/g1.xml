@@ -264,7 +264,7 @@
         <!-- <geom type="mesh" class="visual" mesh="torso_link" /> -->
 
         <!-- <geom type="mesh" mesh="torso_link" class="collision"/> -->
-        <geom fromto="0.0 0 0.2 0.0 0 -0.0" size="0.1" type="capsule" class="collision" />
+        <geom fromto="0.0 0 0.3 0.0 0 -0.0" size="0.06" type="capsule" class="collision" />
 
         <geom type="mesh" class="visual" material="black" mesh="head_link" />
 

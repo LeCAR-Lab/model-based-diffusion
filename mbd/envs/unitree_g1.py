@@ -13,8 +13,9 @@ class UnitreeG1(PipelineEnv):
 
     def __init__(self):
         sys = mjcf.load(f"{mbd.__path__[0]}/assets/unitree_g1/g1.xml")
+        self.torso_idx = sys.link_names.index("torso_link")
 
-        super().__init__(sys=sys, backend="positional", n_frames=5)
+        super().__init__(sys=sys, backend="mjx", n_frames=5)
 
     def reset(self, rng: jax.Array) -> State:
         """Resets the environment to an initial state."""
@@ -45,10 +46,14 @@ class UnitreeG1(PipelineEnv):
 
     def _get_reward(self, pipeline_state: base.State) -> jax.Array:
         return (
-            pipeline_state.x.pos[0, 0] * 1.0
-            - jnp.clip(jnp.abs(pipeline_state.x.pos[0, 2] - 1.3), -1.0, 1.0) * 1.0
-            - jnp.abs(pipeline_state.x.pos[0, 1]) * 0.1
+            pipeline_state.x.pos[self.torso_idx, 0] * 1.0
+            - jnp.clip(
+                jnp.abs(pipeline_state.x.pos[self.torso_idx, 2] - 0.74), -1.0, 1.0
+            )
+            * 1.0
+            - jnp.abs(pipeline_state.x.pos[self.torso_idx, 1]) * 0.1
         )
+
 
 if __name__ == "__main__":
     env = UnitreeG1()
@@ -60,9 +65,12 @@ if __name__ == "__main__":
         rollout.append(state.pipeline_state)
     webpage = html.render(env.sys, rollout)
     # host it
-    import flask 
+    import flask
+
     app = flask.Flask(__name__)
+
     @app.route("/")
     def home():
         return webpage
+
     app.run(port=1234)

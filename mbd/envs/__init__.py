@@ -8,6 +8,7 @@ from .humanoidrun import HumanoidRun
 from .walker2d import Walker2d
 from .cartpole import Cartpole
 from .car2d import Car2d
+from .unitree_g1 import UnitreeG1
 
 def get_env(env_name: str):
     if env_name == "pushT":
@@ -26,6 +27,8 @@ def get_env(env_name: str):
         return Cartpole()
     elif env_name == "car2d":
         return Car2d()
+    elif env_name == "unitree_g1":
+        return UnitreeG1()
     elif env_name in ["ant", "halfcheetah"]:
         return brax_envs.get_environment(env_name=env_name, backend="positional")
     else:
