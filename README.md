@@ -1,5 +1,16 @@
 # Model-Based Diffusion
 
+<div align="center">
+
+[[Website]](https://model-based-diffusion.github.io/)
+[[PDF(Coming Soon)]]()
+[[Arxiv(Coming Soon)]]()
+
+[<img src="https://img.shields.io/badge/Backend-Jax-red.svg"/>](https://github.com/google/jax)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
+</div>
+
 This repository contains the code for the paper "Model-based Diffusion for Trajectory Optimization".
 
 ## Installation
