@@ -176,3 +176,5 @@ figure/
 results/
 *.pth
 *.pt
+
+.vscode/
