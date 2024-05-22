@@ -1,12 +1,13 @@
-# Model-based Diffusion for Trajectory Generation
+# Model-Based Diffusion
 
-This repository contains the code for the paper "Model-based Diffusion for Trajectory Generation".
+This repository contains the code for the paper "Model-based Diffusion for Trajectory Optimization".
 
 ## Installation
 
 To install the required packages, run the following command:
 
 ```bash
+git clone --depth 1 git@github.com:LeCAR-Lab/model-based-diffusion.git
 pip install -e .
 ```
 
