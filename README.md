@@ -1,4 +1,4 @@
-# Model-Based Diffusion
+# Model-Based Diffusion for Trajectory Optimization
 
 <div align="center">
 
@@ -10,11 +10,14 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 <!-- insert figure -->
-<img src="pics/joint.gif" width="600px"/>
+<img src="assets/joint.gif" width="600px"/>
 
 </div>
 
 This repository contains the code for the paper "Model-based Diffusion for Trajectory Optimization".
+
+Model-based diffusion (MBD) is a novel **diffusion-based trajectory optimization** framework that employs a **dynamics model** to approximate the score function. 
+MBD outperforms existing methods (including RL) in terms of sample efficiency and generalization.
 
 ## Installation
 
