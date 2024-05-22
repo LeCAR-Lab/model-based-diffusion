@@ -9,6 +9,9 @@
 [<img src="https://img.shields.io/badge/Backend-Jax-red.svg"/>](https://github.com/google/jax)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
+<!-- insert figure -->
+<img src="pics/joint.gif" width="600px"/>
+
 </div>
 
 This repository contains the code for the paper "Model-based Diffusion for Trajectory Optimization".
