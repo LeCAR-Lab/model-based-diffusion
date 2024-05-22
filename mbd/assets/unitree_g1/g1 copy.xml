@@ -133,7 +133,7 @@
                             quat="0.645099 0.15885 0.202109 0.71956"
                             mass="2.052"
                             diaginertia="0.0114475 0.0107868 0.00214501" />
-                        <joint name="left_hip_yaw_joint" axis="0 0 1" range="-0.01 0.01" />
+                        <joint name="left_hip_yaw_joint" axis="0 0 1" range="-1.0 1.0" />
                         <geom type="mesh" class="visual" mesh="left_hip_yaw_link" />
 
                         <!-- <geom type="mesh" mesh="left_hip_yaw_link" class="collision"/> -->
@@ -147,9 +147,56 @@
                                 diaginertia="0.0127418 0.0124382 0.00192524" />
                             <joint name="left_knee_joint" axis="0 1 0" range="-0.33489 1.0" />
                             <geom type="mesh" class="visual" mesh="left_knee_link" />
+
+                            <!-- <geom size="0.015 0.075" pos="0.007 0.005 -0.15" type="cylinder"
+              class="collision"/> -->
+                            <!-- <geom fromto="0.0 0 0 0.0 0 -0.25" size="0.03" type="capsule"
+                                class="collision" /> -->
                             
-                            <geom fromto="0.1 0 -0.3 -0.04 0 -0.3" size="0.02"
+                            <geom fromto="0.1 0 -0.00 -0.04 0 -0.00" size="0.02"
                                     type="capsule" class="collision" />
+
+                            <body name="left_ankle_pitch_link" pos="0 0.0040687 -0.30007"
+                                quat="0.99678 0 -0.0801788 0">
+                                <inertial pos="-0.007269 0 0.011137"
+                                    quat="0.603053 0.369225 0.369225 0.603053"
+                                    mass="0.074"
+                                    diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />
+                                <joint name="left_ankle_pitch_joint" axis="0 1 0" range="-0.68 0.73" />
+                                <!-- <geom type="mesh" class="visual" mesh="left_ankle_pitch_link"
+                                /> -->
+
+                                <!-- <geom type="mesh" mesh="left_ankle_pitch_link"
+                                class="collision"/> -->
+                                <!-- <geom fromto="0.0 0 0 0.0 0 -0.2" size="0.03" type="capsule"
+                                class="collision" /> -->
+
+                                <body name="left_ankle_roll_link" pos="0 0 -0.017558">
+                                    <site name="left_foot" pos="0 0 0" />
+                                    <inertial pos="0.024762 2e-05 -0.012526"
+                                        quat="0.000771333 0.734476 0.000921291 0.678634"
+                                        mass="0.391"
+                                        diaginertia="0.00110394 0.0010657 0.000149255" />
+                                    <joint name="left_ankle_roll_joint" axis="1 0 0"
+                                        range="-0.2618 0.2618" />
+                                    <geom type="mesh" class="visual" material="black"
+                                        mesh="left_ankle_roll_link" />
+                                    <!-- <geom pos="-0.06 0.02 -0.03" class="foot" />
+                                        <geom pos="-0.06 -0.02 -0.03" class="foot" />
+                                        <geom pos="0.13 0.02 -0.03" class="foot" />
+                                        <geom pos="0.13 -0.02 -0.03" class="foot" /> -->
+                                    <!-- <geom pos="-0.06 -0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="-0.06 0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="0.13 -0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="0.13 0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" /> -->
+                                    <geom fromto="0.1 0 -0.00 -0.04 0 -0.00" size="0.02"
+                                        type="capsule" class="collision" />
+                                </body>
+                            </body>
                         </body>
                     </body>
                 </body>
@@ -183,7 +230,7 @@
                             quat="0.71956 0.202109 0.15885 0.645099"
                             mass="2.052"
                             diaginertia="0.0114475 0.0107868 0.00214501" />
-                        <joint name="right_hip_yaw_joint" axis="0 0 1" range="-0.01 0.01" />
+                        <joint name="right_hip_yaw_joint" axis="0 0 1" range="-1.0 1.0" />
                         <geom type="mesh" class="visual" mesh="right_hip_yaw_link" />
 
                         <!-- <geom type="mesh" mesh="right_hip_yaw_link" class="collision"/> -->
@@ -198,8 +245,51 @@
                             <joint name="right_knee_joint" axis="0 1 0" range="-0.33489 1.0" />
                             <geom type="mesh" class="visual" mesh="right_knee_link" />
 
-                            <geom fromto="0.1 0 -0.3 -0.04 0 -0.3" size="0.02"
+                            <!-- <geom size="0.015 0.075" pos="0.007 -0.005 -0.15" type="cylinder"
+              class="collision"/> -->
+                            <!-- <geom fromto="0.0 0 0 0.0 0 -0.25" size="0.03" type="capsule"
+                                class="collision" /> -->
+
+                            <body name="right_ankle_pitch_link" pos="0 -0.0040687 -0.30007"
+                                quat="0.99678 0 -0.0801788 0">
+                                <inertial pos="-0.007269 0 0.011137"
+                                    quat="0.603053 0.369225 0.369225 0.603053"
+                                    mass="0.074"
+                                    diaginertia="1.89e-05 1.40805e-05 6.9195e-06" />
+                                <joint name="right_ankle_pitch_joint" axis="0 1 0"
+                                    range="-0.68 0.73" />
+                                <geom type="mesh" class="visual" mesh="right_ankle_pitch_link" />
+
+                                <!-- <geom type="mesh" mesh="right_ankle_pitch_link"
+                                class="collision"/> -->
+                                <!-- <geom fromto="0.0 0 0 0.0 0 -0.2" size="0.03" type="capsule"
+                                class="collision" /> -->
+
+                                <body name="right_ankle_roll_link" pos="0 0 -0.017558">
+                                    <site name="right_foot" pos="0 0 0" />
+                                    <inertial pos="0.024762 -2e-05 -0.012526"
+                                        quat="-0.000771333 0.734476 -0.000921291 0.678634"
+                                        mass="0.391" diaginertia="0.00110394 0.0010657 0.000149255" />
+                                    <joint name="right_ankle_roll_joint" axis="1 0 0"
+                                        range="-0.2618 0.2618" />
+                                    <geom type="mesh" class="visual" material="black"
+                                        mesh="right_ankle_roll_link" />
+                                    <!-- <geom pos="-0.06 0.02 -0.03" class="foot" />
+                  <geom pos="-0.06 -0.02 -0.03" class="foot" />
+                  <geom pos="0.13 0.02 -0.03" class="foot" />
+                  <geom pos="0.13 -0.02 -0.03" class="foot" /> -->
+                                    <!-- <geom pos="-0.06 -0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="-0.06 0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="0.13 -0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" />
+                                    <geom pos="0.13 0.02 -0.02" type="sphere" size="0.01"
+                                        class="collision" /> -->
+                                    <geom fromto="0.1 0 -0.00 -0.04 0 -0.00" size="0.02"
                                         type="capsule" class="collision" />
+                                </body>
+                            </body>
                         </body>
                     </body>
                 </body>
@@ -578,8 +668,8 @@
             gear="88" />
         <motor class="g1" name="left_hip_roll_joint" joint="left_hip_roll_joint" ctrlrange="-1 1"
             gear="88" />
-        <!-- <motor class="g1" name="left_hip_yaw_joint" joint="left_hip_yaw_joint" ctrlrange="-1 1"
-            gear="8" /> -->
+        <motor class="g1" name="left_hip_yaw_joint" joint="left_hip_yaw_joint" ctrlrange="-1 1"
+            gear="88" />
         <motor class="g1" name="left_knee_joint" joint="left_knee_joint" ctrlrange="-1 1" gear="139" />
         <!-- <motor class="g1" name="left_ankle_pitch_joint" joint="left_ankle_pitch_joint"
             ctrlrange="-40 40" />
@@ -590,8 +680,8 @@
             ctrlrange="-1 1" gear="88" />
         <motor class="g1" name="right_hip_roll_joint" joint="right_hip_roll_joint" ctrlrange="-1 1"
             gear="88" />
-        <!-- <motor class="g1" name="right_hip_yaw_joint" joint="right_hip_yaw_joint" ctrlrange="-1 1"
-            gear="8" /> -->
+        <motor class="g1" name="right_hip_yaw_joint" joint="right_hip_yaw_joint" ctrlrange="-1 1"
+            gear="88" />
         <motor class="g1" name="right_knee_joint" joint="right_knee_joint" ctrlrange="-1 1"
             gear="139" />
         <!-- <motor class="g1" name="right_ankle_pitch_joint" joint="right_ankle_pitch_joint"
@@ -638,19 +728,6 @@
         <framequat name="imu-body-quat" objtype="site" objname="imu" />
     </sensor>
 
-    <!-- <keyframe>
-        <key name="stand"
-            qpos="
-      0 0 0.75
-      1 0 0 0
-      0 0 0 0 0 0
-      0 0 0 0 0 0
-      0
-      0 0 0 0 0
-      0 0 0 0 0
-      0 0 0 0 0 0 0
-      0 0 0 0 0 0 0" />
-    </keyframe> -->
     <keyframe>
         <key name="stand"
             qpos="
@@ -662,6 +739,6 @@
       0 0 0 0 0
       0 0 0 0 0
       0 0 0 0 0 0 0
-      0 0 0 " />
+      0 0 0 0 0 0 0" />
     </keyframe>
 </mujoco>

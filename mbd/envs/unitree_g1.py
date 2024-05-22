@@ -15,7 +15,7 @@ class UnitreeG1(PipelineEnv):
         sys = mjcf.load(f"{mbd.__path__[0]}/assets/unitree_g1/g1.xml")
         self.torso_idx = sys.link_names.index("torso_link")
 
-        super().__init__(sys=sys, backend="mjx", n_frames=5)
+        super().__init__(sys=sys, backend="positional", n_frames=10)
 
     def reset(self, rng: jax.Array) -> State:
         """Resets the environment to an initial state."""
@@ -34,6 +34,7 @@ class UnitreeG1(PipelineEnv):
 
     def step(self, state: State, action: jax.Array) -> State:
         """Runs one timestep of the environment's dynamics."""
+        action = jnp.clip(action, -1.0, 1.0)
         pipeline_state = self.pipeline_step(state.pipeline_state, action)
 
         obs = self._get_obs(pipeline_state, action)
@@ -57,13 +58,16 @@ class UnitreeG1(PipelineEnv):
 
 if __name__ == "__main__":
     env = UnitreeG1()
+    rng = jax.random.PRNGKey(0)
     state = env.reset(jax.random.PRNGKey(0))
     step_env = jax.jit(env.step)
     rollout = [state.pipeline_state]
-    for _ in range(10):
-        state = step_env(state, jnp.zeros(env.sys.act_size()))
+    for _ in range(50):
+        rng, rng_act = jax.random.split(rng)
+        act = jax.random.normal(rng_act, (env.sys.act_size(),))
+        state = step_env(state, act)
         rollout.append(state.pipeline_state)
-    webpage = html.render(env.sys, rollout)
+    webpage = html.render(env.sys.replace(dt=0.05), rollout)
     # host it
     import flask
 
