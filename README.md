@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[[Website]](https://model-based-diffusion.github.io/)
+[[Website]](https://lecar-lab.github.io/mbd/)
 [[PDF(Coming Soon)]]()
 [[Arxiv(Coming Soon)]]()
 
