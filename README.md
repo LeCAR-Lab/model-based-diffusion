@@ -21,7 +21,9 @@ MBD outperforms existing methods (including RL) in terms of sample efficiency an
 
 ## Why Model-based Diffusion?
 
-
+<video src="https://github.com/LeCAR-Lab/mbd/blob/main/static/videos/intro.mov?raw=true" controls>
+  Your browser does not support the video tag.
+</video>
 
 ## Installation
 
