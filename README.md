@@ -19,12 +19,6 @@ This repository contains the code for the paper "Model-based Diffusion for Traje
 Model-based diffusion (MBD) is a novel **diffusion-based trajectory optimization** framework that employs a **dynamics model** to approximate the score function. 
 MBD outperforms existing methods (including RL) in terms of sample efficiency and generalization.
 
-## Why Model-based Diffusion?
-
-<video src="https://github.com/LeCAR-Lab/mbd/blob/main/static/videos/intro.mov?raw=true" controls>
-  Your browser does not support the video tag.
-</video>
-
 ## Installation
 
 To install the required packages, run the following command:
