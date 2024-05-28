@@ -3,7 +3,7 @@
 <div align="center">
 
 [[Website]](https://lecar-lab.github.io/mbd/)
-[[PDF(Coming Soon)]]()
+[[PDF]](https://drive.google.com/file/d/1kPjD79Cfr9spWulWNVFMRHqTE-mjbGAp/view?usp=sharing)
 [[Arxiv(Coming Soon)]]()
 
 [<img src="https://img.shields.io/badge/Backend-Jax-red.svg"/>](https://github.com/google/jax)
