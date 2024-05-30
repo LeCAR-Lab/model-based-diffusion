@@ -37,8 +37,6 @@ def dumps(sys, statess) -> str:
     for id_ in range(sys.ngeom):
         link_idx = sys.geom_bodyid[id_] - 1
         rgba = sys.geom_rgba[id_]
-        # if (rgba == [0.5, 0.5, 0.5, 1.0]).all():
-        #     rgba = np.array([0.4, 0.33, 0.26, 1.0])
 
         geom = {
             "name": _GEOM_TYPE_NAMES[sys.geom_type[id_]],
@@ -51,7 +49,6 @@ def dumps(sys, statess) -> str:
 
         link_geoms.setdefault(link_names[link_idx], []).append(_to_dict(geom))
 
-    # print(len(link_names))
     # repeat link_geoms for each body across all timesteps
     all_link_geoms = {}
     all_link_names = []
@@ -123,11 +120,6 @@ def render_us(state, us):
         state = step_env_jit(state, us[i])
         rew_sum += state.reward
     return rollout
-    # rew_mean = rew_sum / (Hsample)
-    # webpage = html.render(env.sys.replace(dt=env.dt), rollout)
-    # print(f"evaluated reward mean: {rew_mean:.2e}")
-    # with open(f"{path}/render_diffusion.html", "w") as f:
-    #     f.write(webpage)
 
 
 rng = jax.random.PRNGKey(0)
@@ -137,20 +129,10 @@ rollouts = []
 if os.path.exists(f"{path}/rollouts.pkl"):
     with open(f"{path}/rollouts.pkl", "rb") as f:
         rollouts = pickle.load(f)
-    rollouts_new = []
-    # for i in range(len(rollouts)):
-    #     if i % 5 == 0 or i == len(rollouts) - 1:
-    #         foo = rollouts[i][::6]
-    #         foo.append(rollouts[i][-1])
-    #         rollouts_new.append(foo)
-    rollouts = rollouts_new
     print("loaded rollouts")
 else:
     for i in range(mu_0ts.shape[0]):
         rollout = render_us(state_init, mu_0ts[i])
-        # rollouts.append([*rollout[::5], rollout[-1]])
-        # rollouts.append([*rollout[::5]])
-        # rollouts.append([*rollout[:40][::3]])
         rollouts.append(rollout)
     with open(f"{path}/rollouts.pkl", "wb") as f:
         pickle.dump(rollouts, f)
