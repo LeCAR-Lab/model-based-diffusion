@@ -169,7 +169,9 @@ def run_diffusion(args: Args):
             plt.savefig(f"{path}/rollout.png")
         else:
             render_us = functools.partial(
-                mbd.utils.render_us, step_env_jit, env.sys.replace(dt=env.dt)
+                mbd.utils.render_us,
+                step_env_jit,
+                env.sys.tree_replace({"opt.timestep": env.dt}),
             )
             webpage = render_us(state_init, Yi[-1])
             with open(f"{path}/rollout.html", "w") as f:
