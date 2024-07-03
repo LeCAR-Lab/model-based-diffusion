@@ -4,7 +4,7 @@
 
 [[Website]](https://lecar-lab.github.io/mbd/)
 [[PDF]](https://drive.google.com/file/d/1kPjD79Cfr9spWulWNVFMRHqTE-mjbGAp/view?usp=sharing)
-[[Arxiv(Coming Soon)]]()
+[[Arxiv]](https://arxiv.org/pdf/2407.01573)
 
 [<img src="https://img.shields.io/badge/Backend-Jax-red.svg"/>](https://github.com/google/jax)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -96,3 +96,17 @@ where `$MODE` is the mode of the planner, you can choose from `mppi`, `cem`, `cm
 ## Acknowledgements
 
 * This codebase's environment and RL implementation is built on top of [Brax](https://github.com/google/brax).
+
+## BibTeX
+
+```bibtex
+@misc{pan2024modelbaseddiffusiontrajectoryoptimization,
+      title={Model-Based Diffusion for Trajectory Optimization}, 
+      author={Chaoyi Pan and Zeji Yi and Guanya Shi and Guannan Qu},
+      year={2024},
+      eprint={2407.01573},
+      archivePrefix={arXiv},
+      primaryClass={cs.RO},
+      url={https://arxiv.org/abs/2407.01573}, 
+}
+```
