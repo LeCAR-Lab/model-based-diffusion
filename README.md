@@ -61,7 +61,7 @@ To visualize the diffusion process, run the following command:
 
 ```bash
 cd mbd/scripts
-python visualize_mbd.py --env_name $ENV_NAME
+python vis_diffusion.py --env_name $ENV_NAME
 ```
 
 Please make sure you have run the planner first to generate the data.
